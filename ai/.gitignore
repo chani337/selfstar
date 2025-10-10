@@ -1,9 +1,0 @@
-mlruns/
-data/
-!data/samples/
-!data/samples/**/*
-__pycache__/
-*.pyc
-*.pt
-*.pth
-*.onnx
