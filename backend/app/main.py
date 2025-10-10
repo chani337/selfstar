@@ -1,13 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
-from app.api.routes.auth import router as auth_router
-from app.api.core.mysql import get_mysql_pool
 import uvicorn
 import logging
 from dotenv import load_dotenv, dotenv_values
 import os
 from datetime import datetime, timezone
+from app.core.config import settings
+from app.core.logging import get_logger
+from app.schemas.health import HealthResponse
 
 # Load environment variables from .env file(s)
 # 1) project root .env
@@ -16,8 +17,7 @@ load_dotenv(dotenv_path=".env", override=True)
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"), override=True)
 
 # Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("env_loader")
+logger = get_logger("env_loader")
 
 # Debugging: Log .env file path and contents
 logger.info("Attempting to load .env file from project root.")
@@ -44,8 +44,8 @@ logger.info(f"Loaded app/.env values: {env_values_app}")
 app = FastAPI(debug=True)
 
 # ===== CORS =====
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5174")
-STRICT = os.getenv("STRICT_CORS", "0") == "1"
+FRONTEND_URL = settings.FRONTEND_URL
+STRICT = settings.STRICT_CORS
 allow_origins = [FRONTEND_URL, FRONTEND_URL.rstrip("/")] if STRICT else ["*"]
 
 app.add_middleware(
@@ -57,7 +57,7 @@ app.add_middleware(
 )
 
 # ===== Session (쿠키 기반) =====
-SESSION_SECRET = os.getenv("SESSION_SECRET", "default_secret_key")
+SESSION_SECRET = settings.SESSION_SECRET
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 
 # Debugging: Log session secret and MySQL pool initialization
@@ -65,9 +65,13 @@ logger.info(f"SESSION_SECRET: {SESSION_SECRET}")
 logger.info("Initializing MySQL pool...")
 
 # ===== Routers =====
-# auth_router 내부에서 prefix="/auth" 를 사용한다는 가정하에,
-# 여기서는 추가 prefix를 절대 붙이지 않습니다. (중복 → /auth/auth/*)
-app.include_router(auth_router)
+# api 라우터 집계(import 에러 무시)
+try:
+    from app.api.routes import router as api_router
+    app.include_router(api_router)
+    logger.info("api_router registered from app.api.routes")
+except Exception as e:
+    logger.warning(f"No api_router found in app.api.routes: {e}")
 
 # ===== Health =====
 @app.get("/")
@@ -88,15 +92,9 @@ def routes_debug():
     # 또는: return [getattr(r, "path", "") for r in app.router.routes]
 
 # ===== App lifecycle =====
-@app.on_event("startup")
-async def startup_event():
-    app.state.mysql_pool = await get_mysql_pool()
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    pool = app.state.mysql_pool
-    pool.close()
-    await pool.wait_closed()
+@app.get("/health", response_model=HealthResponse)
+def health():
+    return HealthResponse.ok()
 
 if __name__ == "__main__":
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

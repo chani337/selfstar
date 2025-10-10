@@ -2,38 +2,30 @@
 
 이 문서는 백엔드의 유일한 문서입니다. `app/api/README.md`의 모든 내용은 여기에 통합되었으며, 서버는 항상 Python 가상환경(.venv)에서 실행하는 것을 기준으로 합니다.
 
-## 폴더 구조
+## 폴더 구조 (정리됨)
 ```
 backend/
-	requirements.txt
 	app/
 		__init__.py
-		__main__.py         # python -m app 으로 실행 가능
-		main.py             # FastAPI 앱 엔트리(세션/CORS/라우터 등록)
+		main.py                 # FastAPI 앱 엔트리
 		api/
 			__init__.py
-			main.py           # (보조 앱 엔트리: 라우터 예제)
-			core/
-				__init__.py
-				db.py           # aiomysql 풀 (비동기 MySQL)
-				mysql.py        # aiomysql 풀 (동일 목적의 대안)
-				database.py     # SQLAlchemy Async 엔진/세션 (선택 사용)
-			middlewares/
-				error.py
-			models/
-				__init__.py
-				users.py        # 사용자 upsert/조회
 			routes/
-				__init__.py
-				auth.py         # /auth/* (카카오 OAuth 포함)
-				posts.py        # / (예시용)
-			schemas/
-				__init__.py
-				user.py
-			strategies/
-				google.py / kakao.py / naver.py (전략 템플릿)
-	tests/
-		test_health.py
+				__init__.py      # 라우터 집계(하위 라우터 포함)
+		core/
+			__init__.py
+			config.py
+			logging.py
+		models/
+			__init__.py
+			base.py
+		schemas/
+			__init__.py
+			health.py
+		tests/
+	.env.example
+	README.md
+	requirements.txt
 ```
 
 ## 요구 사항
