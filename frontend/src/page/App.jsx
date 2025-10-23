@@ -9,6 +9,8 @@ import ConsentPage from "./ConsentPage.jsx";
 import UserSetup from "./UserSetup.jsx";
 import Chat from "./Chat.jsx";
 import ProfileSelect from "./ProfileSelect.jsx";
+import AuthSuccess from "./AuthSuccess";
+
 
 const base = "px-3 py-1.5 rounded-full transition";
 const active = "bg-blue-600 text-white shadow";
@@ -24,7 +26,7 @@ import step2Img from "../../img/step2.png";
 import step3Img from "../../img/step3.png";
 
 // Backend API base for auth and routes
-const API = "http://localhost:8000";
+const API = "https://selfstar.duckdns.org/api"
 
 /* =============== 세션 사용자 훅 =============== */
 function useAuth() {
@@ -328,6 +330,7 @@ export default function App() {
             }
           />
           <Route path="/alerts" element={<Alerts />} />
+          <Route path="/auth/success" element={<AuthSuccess />} />
         </Routes>
       </main>
 

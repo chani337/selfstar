@@ -10,7 +10,7 @@ from datetime import datetime
 
 from app.api.schemas.images import GenerateImageRequest, ImageSaveRequest
 
-router = APIRouter(prefix="/api", tags=["images"])
+router = APIRouter(prefix="/images", tags=["images"])
 log = logging.getLogger("images")
 
 def _save_data_uri(data_uri: str):

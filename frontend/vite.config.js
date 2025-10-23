@@ -11,15 +11,20 @@ export default defineConfig({
   plugins: [react()],
   resolve: { alias: { '@': path.resolve(__dirname, './src') } },
   server: {
+    host: true,
     port: 5174,
+
+    // ✅ 여기 추가: .env 에서 불러오기
+    allowedHosts: [process.env.VITE_ALLOWED_HOST || 'localhost'],
+
     proxy: {
-      // In Docker, the backend is reachable via its service name on the default network
-  '/auth': { target: 'http://backend:8000', changeOrigin: true, secure: false },
-  '/api':  { target: 'http://backend:8000', changeOrigin: true, secure: false },
-  '/users': { target: 'http://backend:8000', changeOrigin: true, secure: false },
-  '/user': { target: 'http://backend:8000', changeOrigin: true, secure: false }, // legacy
-  '/personas': { target: 'http://backend:8000', changeOrigin: true, secure: false },
-  '/media':{ target: 'http://backend:8000', changeOrigin: true, secure: false },
+      '/auth': { target: 'http://backend:8000', changeOrigin: true, secure: false },
+      '/api': { target: 'http://backend:8000', changeOrigin: true, secure: false },
+      '/users': { target: 'http://backend:8000', changeOrigin: true, secure: false },
+      '/user': { target: 'http://backend:8000', changeOrigin: true, secure: false }, // legacy
+      '/personas': { target: 'http://backend:8000', changeOrigin: true, secure: false },
+      '/media': { target: 'http://backend:8000', changeOrigin: true, secure: false },
     },
   },
-}) 
+})
+

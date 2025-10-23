@@ -25,8 +25,8 @@ logger.setLevel(logging.INFO)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # ----- 환경 변수(기본값 포함) -----
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5174")
+BACKEND_URL = os.getenv("BACKEND_URL", "https://selfstar.duckdns.org/api")  # ✅ 도메인으로 변경
+FRONTEND_URL = os.getenv("FRONTEND_URL", "https://selfstar.duckdns.org")
 KAKAO_SCOPE = os.getenv("KAKAO_SCOPE", "profile_nickname,profile_image")  # 이메일 제외
 KAKAO_ADMIN_KEY = os.getenv("KAKAO_ADMIN_KEY")
 GOOGLE_SCOPE = os.getenv("GOOGLE_SCOPE", "openid email profile")
@@ -133,19 +133,33 @@ async def kakao_callback(request: Request):
             if not access_token:
                 return RedirectResponse(url=f"{FRONTEND_URL}/signup?error=oauth_token_missing")
 
-            user_resp = await client.get(
-                "https://kapi.kakao.com/v2/user/me",
-                headers={"Authorization": f"Bearer {access_token}"},
-            )
-            if user_resp.status_code != 200:
-                logger.error("Kakao userinfo error [%s]: %s", user_resp.status_code, user_resp.text)
-                return RedirectResponse(url=f"{FRONTEND_URL}/signup?error=oauth_userinfo")
+            #user_resp = await client.get(
+               # "https://kapi.kakao.com/v2/user/me",
+               # headers={"Authorization": f"Bearer {access_token}"},
+            #)
+        request.session["user_id"] = int(user_row["user_id"])
 
-            kakao_user = user_resp.json()
-            inherent = str(kakao_user.get("id"))
-            props = kakao_user.get("properties") or {}
-            nick = props.get("nickname")
-            img = props.get("profile_image")
+        response = RedirectResponse(url=f"{FRONTEND_URL}/auth/success", status_code=302)
+        response.set_cookie(
+            key="session",
+            value=session_token,
+            httponly=True,
+            secure=True,                     # ✅ HTTPS 환경에서는 필수
+            samesite="none",                 # ✅ 다른 도메인 간 쿠키 공유 가능
+            path="/",
+        )
+        return response
+
+
+            # if user_resp.status_code != 200:
+                # logger.error("Kakao userinfo error [%s]: %s", user_resp.status_code, user_resp.text)
+                # return RedirectResponse(url=f"{FRONTEND_URL}/")
+
+            # kakao_user = user_resp.json()
+            # inherent = str(kakao_user.get("id"))
+            # props = kakao_user.get("properties") or {}
+            # nick = props.get("nickname")
+            # img = props.get("profile_image")
     except Exception as e:
         logger.error("Kakao HTTP error: %s", e)
         return RedirectResponse(url=f"{FRONTEND_URL}/signup?error=http")

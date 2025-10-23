@@ -5,8 +5,10 @@ router = APIRouter()
 try:
     from .auth import router as auth_router
     router.include_router(auth_router)
-except Exception:
-    pass
+except Exception as e:
+    import traceback
+    print("[ERROR] ❌ auth 라우터 불러오기 실패:", e)
+    traceback.print_exc()
 
 try:
     from .posts import router as posts_router
