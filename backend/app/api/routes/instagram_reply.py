@@ -2,7 +2,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 import httpx
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import os
 import json
 import aiomysql
@@ -321,3 +321,81 @@ async def auto_draft_reply(request: Request, body: AutoDraftBody):
         raise HTTPException(status_code=502, detail=f"ai_delegate_error: {e}")
 
     return {"ok": True, "reply": reply_text}
+
+
+class BulkReplyItem(BaseModel):
+    comment_id: str = Field(..., min_length=5)
+    message: str = Field(..., min_length=1, max_length=500)
+
+
+class BulkReplyBody(BaseModel):
+    persona_num: int = Field(..., ge=0)
+    items: List[BulkReplyItem] = Field(..., min_items=1)
+
+
+@router.post("/comments/reply_bulk")
+async def reply_to_comments_bulk(request: Request, body: BulkReplyBody):
+    """Reply to multiple Instagram comments in a single request.
+
+    Posts replies sequentially on the server, returns per-item result list.
+    Also best-effort ACK-hides each original comment in DB.
+    """
+    uid = _require_login(request)
+    mapping = await _get_persona_instagram_mapping(int(uid), int(body.persona_num))
+    if not mapping or not mapping.get("ig_user_id"):
+        raise HTTPException(status_code=400, detail="persona_not_linked")
+    token = await _get_persona_token(int(uid), int(body.persona_num))
+    if not token:
+        raise HTTPException(status_code=401, detail="persona_oauth_required")
+
+    results: List[Dict[str, Any]] = []
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            for it in body.items:
+                try:
+                    r = await client.post(
+                        f"{IG_GRAPH}/{it.comment_id}/replies",
+                        data={"message": it.message, "access_token": token},
+                    )
+                    if r.status_code != 200:
+                        try:
+                            err = (r.json() or {}).get("error") or {}
+                            if err.get("code") == 190:
+                                # OAuth required/expired
+                                results.append({"comment_id": it.comment_id, "ok": False, "status": 401, "error": "persona_oauth_required"})
+                                continue
+                        except Exception:
+                            pass
+                        results.append({"comment_id": it.comment_id, "ok": False, "status": r.status_code, "error": r.text})
+                        continue
+                    data = r.json() or {}
+                    results.append({"comment_id": it.comment_id, "ok": True, "status": 200, "result": data})
+                    # ACK-hide in DB (best-effort)
+                    try:
+                        pool = await get_mysql_pool()
+                        async with pool.acquire() as conn:
+                            async with conn.cursor() as cur:
+                                try:
+                                    await cur.execute(
+                                        """
+                                        INSERT INTO ss_instagram_event_seen (external_id, user_id, user_persona_num)
+                                        VALUES (%s,%s,%s)
+                                        ON DUPLICATE KEY UPDATE updated_at=CURRENT_TIMESTAMP
+                                        """,
+                                        (str(it.comment_id), int(uid), int(body.persona_num)),
+                                    )
+                                    try:
+                                        await conn.commit()
+                                    except Exception:
+                                        pass
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
+                except Exception as e:
+                    results.append({"comment_id": it.comment_id, "ok": False, "status": 500, "error": str(e)})
+        return {"ok": True, "results": results}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"reply_bulk_failed:{e}")

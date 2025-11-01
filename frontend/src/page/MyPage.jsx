@@ -136,9 +136,10 @@ export default function MyPage() {
         const res = await fetch(`${API_BASE}/oauth/instagram/accounts${personaParam}`, { credentials: "include" });
         if (!res.ok) {
           if (res.status === 401) {
-            // 페르소나 전용 토큰이 없으면 OAuth 진행 유도
+            // 페르소나 토큰 만료/부재: 자동 리다이렉트하지 않고 모달 내에서 안내만 표시
             setIgLoading(false);
-            startInstagramOAuth();
+            setIgError("인증이 만료되었거나 권한이 없습니다. 아래 '다시 인증'을 눌러 재연동해 주세요.");
+            setIgAccounts([]);
             return;
           }
           // 400 등의 기타 오류는 프로필 모달을 자동으로 열지 않고, 모달 내 오류 안내만 표시

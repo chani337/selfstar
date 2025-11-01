@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os
 from typing import Optional
+import asyncio
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, AnyHttpUrl
@@ -72,15 +73,57 @@ async def publish_instagram(request: Request, body: InstagramPublishRequest):
     if not creation_id:
         raise HTTPException(status_code=502, detail="creation_id_missing")
 
-    # 2) 발행
+    # 1.5) 컨테이너 준비 상태 대기 (status_code == FINISHED)
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            finished = False
+            for _ in range(20):  # ~20초 대기 (1초 간격)
+                gr = await client.get(
+                    f"{IG_GRAPH}/{creation_id}",
+                    params={
+                        "access_token": token,
+                        "fields": "status_code",
+                    },
+                )
+                if gr.status_code == 200:
+                    st = (gr.json() or {}).get("status_code")
+                    if st == "FINISHED":
+                        finished = True
+                        break
+                    if st == "ERROR":
+                        raise HTTPException(status_code=502, detail="container_status_error")
+                await asyncio.sleep(1.0)
+    except HTTPException:
+        raise
+    except Exception:
+        # 상태 조회 실패는 치명적이지 않으므로 발행 시도 계속
+        pass
+
+    # 2) 발행 (컨테이너 준비가 덜 되었을 수 있어 1회 재시도 포함)
     async with httpx.AsyncClient(timeout=60) as client:
-        pub = await client.post(
-            f"{IG_GRAPH}/{ig_user_id}/media_publish",
-            data={
-                "creation_id": creation_id,
-                "access_token": token,
-            },
-        )
-    if pub.status_code != 200:
-        raise HTTPException(status_code=pub.status_code, detail=pub.text)
+        async def do_publish():
+            return await client.post(
+                f"{IG_GRAPH}/{ig_user_id}/media_publish",
+                data={
+                    "creation_id": creation_id,
+                    "access_token": token,
+                },
+            )
+
+        pub = await do_publish()
+        if pub.status_code != 200:
+            # 컨테이너가 아직 준비되지 않은 대표 오류(9007/2207027)인 경우, 짧게 대기 후 1회 재시도
+            try:
+                j = pub.json() or {}
+                err = (j.get("error") or {})
+                if err.get("code") == 9007 or err.get("error_subcode") == 2207027:
+                    await asyncio.sleep(2.0)
+                    pub2 = await do_publish()
+                    if pub2.status_code == 200:
+                        return {"ok": True, "result": pub2.json()}
+                    else:
+                        raise HTTPException(status_code=pub2.status_code, detail=pub2.text)
+            except Exception:
+                pass
+            raise HTTPException(status_code=pub.status_code, detail=pub.text)
     return {"ok": True, "result": pub.json()}

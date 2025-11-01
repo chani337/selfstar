@@ -150,39 +150,36 @@ export default function Alerts() {
 
   const confirmBulk = async () => {
     if (!bulk) return;
-    setBulk((b) => b ? { ...b, posting: true } : b);
+    setBulk((b) => b ? { ...b, posting: true, entries: b.entries.map((e) => (e.status === 'ready' ? { ...e, status: 'posting' } : e)) } : b);
     const persona_num = bulk.persona_num;
-    for (let i = 0; i < bulk.entries.length; i++) {
-      const e = bulk.entries[i];
-      if (e.status !== 'ready') continue;
-      try {
-        setBulk((prev) => {
-          if (!prev) return prev;
-          const copy = { ...prev, entries: prev.entries.slice() };
-          copy.entries[i] = { ...copy.entries[i], status: 'posting' };
-          return copy;
+    // Prepare single bulk payload
+    const items = bulk.entries.filter((e) => e.status === 'ready').map((e) => ({ comment_id: e.comment_id, message: e.reply }));
+    try {
+      const r = await fetch(`${API_BASE}/api/instagram/comments/reply_bulk`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ persona_num, items }),
+      });
+      const jr = await r.json().catch(() => ({}));
+      if (!r.ok || !jr?.ok) throw new Error(`HTTP ${r.status}`);
+      const results = jr.results || [];
+      // Map results back to entries
+      setBulk((prev) => {
+        if (!prev) return prev;
+        const map = new Map(results.map((x) => [x.comment_id, x]));
+        const copy = { ...prev, entries: prev.entries.slice() };
+        copy.entries = copy.entries.map((e) => {
+          const res = map.get(e.comment_id);
+          if (!res) return e;
+          if (res.ok) return { ...e, status: 'done' };
+          return { ...e, status: 'error', error: res.error || `HTTP ${res.status}` };
         });
-        const r = await fetch(`${API_BASE}/api/instagram/comments/reply`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ persona_num, comment_id: e.comment_id, message: e.reply }),
-        });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        setBulk((prev) => {
-          if (!prev) return prev;
-          const copy = { ...prev, entries: prev.entries.slice() };
-          copy.entries[i] = { ...copy.entries[i], status: 'done' };
-          return copy;
-        });
-      } catch (err) {
-        setBulk((prev) => {
-          if (!prev) return prev;
-          const copy = { ...prev, entries: prev.entries.slice() };
-          copy.entries[i] = { ...copy.entries[i], status: 'error', error: err?.message || 'post 실패' };
-          return copy;
-        });
-      }
+        return copy;
+      });
+    } catch (err) {
+      // On bulk error, mark all posting entries as error
+      setBulk((prev) => prev ? { ...prev, entries: prev.entries.map((e) => e.status === 'posting' ? { ...e, status: 'error', error: err?.message || 'bulk 실패' } : e) } : prev);
     }
     // refresh and close
     await fetchOverview();

@@ -64,6 +64,9 @@ export default function Chat() {
   const [caption, setCaption] = useState("");
   const [captionLoading, setCaptionLoading] = useState(false);
   const [captionError, setCaptionError] = useState("");
+  // Upload modal state
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadState, setUploadState] = useState({ step: "idle", message: "", error: "", canConnect: false });
   // Abort controllers to prevent overlapping requests from spamming the console
   const imgReqRef = useRef(null);
   const captionReqRef = useRef(null);
@@ -154,25 +157,32 @@ export default function Chat() {
   // 엔드포인트: POST /instagram/publish
   // payload: { persona_num, image_url(절대 URL), caption }
   const uploadToInstagram = async () => {
+    // Open modal immediately
+    setShowUploadModal(true);
+    setUploadState({ step: "precheck", message: "업로드를 준비하고 있어요…", error: "", canConnect: false });
     if (!current?.num) {
-      alert("먼저 페르소나를 선택해 주세요.");
+      setUploadState({ step: "error", message: "", error: "먼저 페르소나를 선택해 주세요.", canConnect: false });
       return;
     }
     if (!currentPreview) {
-      alert("프리뷰에 이미지가 없습니다.");
+      setUploadState({ step: "error", message: "", error: "프리뷰에 이미지가 없습니다.", canConnect: false });
       return;
     }
+    // Ensure image is a public URL
     let uploadUrl = currentPreview;
     if (!isHttpUrl(uploadUrl)) {
       try {
+        setUploadState({ step: "publishing", message: "이미지를 업로드 가능한 주소로 변환 중…", error: "", canConnect: false });
         uploadUrl = await ensurePublicUrl(uploadUrl);
       } catch (e) {
-        alert(`공개 URL 변환 실패: ${e}`);
+        setUploadState({ step: "error", message: "", error: `공개 URL 변환 실패: ${e}`, canConnect: false });
         return;
       }
     }
-  const cap = `${(caption || "").trim()}\n\n${mockHashtags(lastPrompt || prompt).join(" ")}`.slice(0, 2200);
+  // 사용자 입력 캡션만 사용(자동 해시태그 추가 제거)
+  const cap = `${(caption || "").trim()}`.slice(0, 2200);
     try {
+      setUploadState({ step: "publishing", message: "인스타그램에 게시를 요청 중…", error: "", canConnect: false });
       const res = await fetch(`${API_BASE}/api/instagram/publish`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -181,24 +191,22 @@ export default function Chat() {
       });
       const data = await res.json().catch(() => ({}));
       if (res.status === 401 && (data?.detail === "persona_oauth_required")) {
-        // 채팅에 안내를 남겨 CTA 버튼이 함께 보이도록 함
+        // Offer connect flow directly in modal
+        setUploadState({ step: "auth", message: "인스타그램 연동이 필요합니다.", error: "", canConnect: true });
+        // 가이드 메시지를 채팅에도 남김
         setMessages((m) => [
           ...m,
           { id: Date.now(), role: "assistant", text: "인스타그램을 연동해야 생성된 이미지를 인스타그램에 업로드할 수 있습니다.", ts: Date.now() },
         ]);
-        if (confirm("인스타그램 계정 연동이 필요합니다. 지금 연결할까요?")) {
-          const url = `${API_BASE}/oauth/instagram/start?persona_num=${encodeURIComponent(current.num)}&picker=1&fresh=1`;
-          window.location.href = url;
-        }
         return;
       }
       if (!res.ok || !data?.ok) {
-        alert(`업로드 실패: ${typeof data?.detail === "string" ? data.detail : JSON.stringify(data)}`);
+        setUploadState({ step: "error", message: "", error: `업로드 실패: ${typeof data?.detail === "string" ? data.detail : JSON.stringify(data)}` , canConnect: false });
         return;
       }
-      alert("인스타그램 업로드를 요청했습니다. 잠시 후 계정에서 게시물을 확인해 주세요.");
+      setUploadState({ step: "done", message: "업로드 요청이 접수되었습니다. 잠시 후 인스타그램에서 확인해 주세요.", error: "", canConnect: false });
     } catch (e) {
-      alert(`업로드 중 오류: ${e}`);
+      setUploadState({ step: "error", message: "", error: `업로드 중 오류: ${e}`, canConnect: false });
     }
   };
   const autoGenerateCaption = async () => {
@@ -809,6 +817,50 @@ export default function Chat() {
           </Card>
         </div>
       </aside>
+    {/* Upload modal */}
+    {showUploadModal && (
+      <div className="fixed inset-0 z-[100] grid place-items-center bg-black/40 p-4" role="dialog" aria-modal="true">
+        <div className="w-[520px] max-w-[92vw] rounded-2xl bg-white shadow-xl border">
+          <div className="p-5 border-b">
+            <div className="text-lg font-semibold">인스타 업로드</div>
+            <div className="mt-1 text-sm text-neutral-500">이미지를 인스타그램으로 보내는 중…</div>
+          </div>
+          <div className="p-5 space-y-3">
+            {uploadState.step === "publishing" && (
+              <div className="text-sm text-neutral-700">{uploadState.message || "요청 중…"}</div>
+            )}
+            {uploadState.step === "precheck" && (
+              <div className="text-sm text-neutral-700">{uploadState.message}</div>
+            )}
+            {uploadState.step === "auth" && (
+              <div className="space-y-2">
+                <div className="text-sm text-neutral-800">인스타그램 계정 연동이 필요합니다.</div>
+                <Button
+                  onClick={() => {
+                    const url = `${API_BASE}/oauth/instagram/start?persona_num=${encodeURIComponent(current?.num || "")}&picker=1&fresh=1`;
+                    window.location.href = url;
+                  }}
+                  className="w-full"
+                >연동하러 가기</Button>
+              </div>
+            )}
+            {uploadState.step === "done" && (
+              <div className="text-sm text-emerald-700">{uploadState.message}</div>
+            )}
+            {uploadState.step === "error" && (
+              <div className="text-sm text-rose-600 whitespace-pre-wrap break-words">{uploadState.error || "오류가 발생했습니다."}</div>
+            )}
+          </div>
+          <div className="p-4 border-t flex items-center justify-end gap-2">
+            {uploadState.step !== "publishing" && (
+              <Button variant="outline" onClick={() => { setShowUploadModal(false); }}>
+                닫기
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
     {/* 안내는 이미지 하단 캡션과 프리뷰 드롭존 하이라이트로 제공 (오버레이 비활성화) */}
     </div>
   );
