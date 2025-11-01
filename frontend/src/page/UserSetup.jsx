@@ -486,7 +486,7 @@ function StyleTag() {
       .ss-btn:focus-visible{ outline:none; box-shadow:0 0 0 4px var(--glow) }
       .ss-btn.primary{ border-color:transparent; color:#fff; background:linear-gradient(180deg, var(--cta-2), var(--cta));
         box-shadow:0 16px 34px rgba(45,108,223,.22) }
-      .ss-btn[disabled]{opacity:.55; cursor:not-allowed; transform:none; box-shadow:none}
+  .ss-btn[disabled]{opacity:.55; transform:none; box-shadow:none}
       .ss-shadow-foot{position:absolute; left:24px; right:24px; bottom:-14px; height:28px;
         background: radial-gradient(80% 100% at 50% 0%, rgba(45,108,223,.16), rgba(45,108,223,0)); border-radius:50%}
 

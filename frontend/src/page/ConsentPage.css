@@ -28,7 +28,7 @@ body{margin:0; font-family:ui-sans-serif,-apple-system,Segoe UI,Roboto,Helvetica
 .doc::-webkit-scrollbar{height:8px; width:8px}
 .doc::-webkit-scrollbar-thumb{background:#dbe7ff; border-radius:8px}
 .footer-actions{display:flex; justify-content:center; padding:18px}
-.btn{padding:14px 22px; border-radius:12px; border:1px solid var(--border); background:#f2f7ff; color:#1e3a8a; font-weight:900; cursor:not-allowed}
+.btn{padding:14px 22px; border-radius:12px; border:1px solid var(--border); background:#f2f7ff; color:#1e3a8a; font-weight:900}
 .btn.active{background:#2563EB; color:#fff; border-color:#2563EB; cursor:pointer}
 .btn.active:focus-visible{outline:none; box-shadow:var(--ring)}
 .caret{display:inline-block; width:0; border-right:2px solid var(--primary); margin-left:1px; animation: blink 1s steps(1,end) infinite}

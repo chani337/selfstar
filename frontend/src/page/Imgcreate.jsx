@@ -633,7 +633,7 @@ function Home({ compact = false }) {
             {isInfoReady && (
               <div className="flex justify-end gap-2 mt-4">
                 <button
-                  className={`${canGenerate ? "btn-primary" : "btn-outline"} ${(loading || !canGenerate) ? "opacity-60 cursor-not-allowed" : ""}`}
+                  className={`${canGenerate ? "btn-primary" : "btn-outline"} ${(loading || !canGenerate) ? "opacity-60" : ""}`}
                   type="button"
                   onClick={onGenerate}
                   disabled={loading || !canGenerate}
@@ -641,7 +641,7 @@ function Home({ compact = false }) {
                   이미지 생성
                 </button>
                 <button
-                  className={`${canConfirm ? "btn-primary" : "btn-outline"} ${((loading || saving) || !canConfirm) ? "opacity-60 cursor-not-allowed" : ""}`}
+                  className={`${canConfirm ? "btn-primary" : "btn-outline"} ${((loading || saving) || !canConfirm) ? "opacity-60" : ""}`}
                   onClick={() => {
                     if (!canConfirm || loading || saving) return;
                     if (!generated || !lastPayload) {

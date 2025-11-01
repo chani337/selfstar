@@ -300,7 +300,7 @@ function StyleTag() {
     border-color:#D6E7FF;
   }
   .tile:active{ transform: translateY(0) scale(.995); }
-  .tile.locked{ cursor:not-allowed; filter:saturate(.6) grayscale(.1); }
+  .tile.locked{ filter:saturate(.6) grayscale(.1); }
   .tile.locked:hover, .tile.locked:focus-visible{ transform:none; box-shadow: 0 10px 24px rgba(45,108,223,.10), inset 0 1px 0 rgba(255,255,255,.85); border-color:#E3EEFF }
   .tile.locked::before, .tile.locked::after{ display:none }
   .tile.is-selected{
@@ -386,7 +386,7 @@ function StyleTag() {
   .btn:hover{ transform:translateY(-1px); box-shadow:0 10px 20px rgba(45,108,223,.1) }
   .btn.primary{ border-color:transparent; color:#fff; background:linear-gradient(180deg, var(--cta-2), var(--cta));
     box-shadow:0 16px 34px rgba(45,108,223,.22) }
-  .btn[disabled]{ opacity:.55; cursor:not-allowed; box-shadow:none; transform:none }
+  .btn[disabled]{ opacity:.55; box-shadow:none; transform:none }
 
   /* Modal */
   .modal-backdrop{
