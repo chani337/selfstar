@@ -27,6 +27,22 @@ export default function DashboardInsights() {
   const [mediaItems, setMediaItems] = useState([]);
   const [mediaError, setMediaError] = useState(null);
   const [mediaLoading, setMediaLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  // 프로필 선택 모달에서 선택되면 반영 (PersonaQuickPicker가 window 이벤트를 쏨)
+  useEffect(()=>{
+    const handler = (e)=>{
+      const picked = e?.detail;
+      if(!picked) return;
+      // personas가 로드된 뒤면 매칭, 아니면 num만 반영
+      setPersona(prev=>{
+        const cand = (personas || []).find(p=>p.num===picked.num);
+        return cand || picked;
+      });
+    };
+    window.addEventListener('persona-chosen', handler);
+    return ()=> window.removeEventListener('persona-chosen', handler);
+  }, [personas]);
 
   useEffect(() => {
     let alive = true;
@@ -47,13 +63,16 @@ export default function DashboardInsights() {
     return ()=>{ alive=false; };
   }, []);
 
-  useEffect(() => {
+  const loadAll = async () => {
     const load = async () => {
       if (!persona?.num) { setData(null); return; }
       setLoading(true); setError(null);
       try {
         const res = await fetch(`${API_BASE}/api/instagram/insights/overview?persona_num=${persona.num}&days=30`, { credentials: 'include' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          // Friendly 401 messaging handled in render
+          throw new Error(`HTTP ${res.status}`);
+        }
         const j = await res.json();
         setData(j);
         // 일별 증가
@@ -77,7 +96,11 @@ export default function DashboardInsights() {
         setMediaError(e?.message || '로드 실패');
       } finally { setLoading(false); }
     };
-    load();
+    await load();
+  };
+
+  useEffect(() => {
+    loadAll();
   }, [persona?.num]);
 
   // ===== Transform series for charts (with aligned dates) =====
@@ -110,23 +133,32 @@ export default function DashboardInsights() {
           <div className="text-xs text-slate-500 mt-1">최근 30일 데이터 기준</div>
         </div>
         <div className="flex items-center gap-2">
-          <select
-            value={persona?.num || ''}
-            onChange={(e)=>{
-              const p = personas.find(x=>String(x.num)===e.target.value);
-              setPersona(p||null);
-              if (p?.num) localStorage.setItem('activePersonaNum', String(p.num));
-            }}
-            className="h-9 px-3 rounded-xl border bg-white"
-          >
-            {personas.map(p=> <option key={p.num} value={p.num}>{p.name || `프로필 ${p.num}`}</option>)}
-          </select>
+          {/* 드롭다운 제거, 버튼만 노출 */}
           <PersonaQuickPicker buttonLabel="프로필 선택" to="/dashboard" />
+          <button
+            className={`btn ${syncing ? 'light' : ''}`}
+            onClick={async ()=>{
+              if (!persona?.num) return;
+              setSyncing(true);
+              try {
+                await fetch(`${API_BASE}/api/instagram/insights/snapshot?persona_num=${persona.num}`, { method:'POST', credentials:'include' });
+              } catch {}
+              await loadAll();
+              setSyncing(false);
+            }}
+          >{syncing? '동기화 중…' : '지금 동기화'}</button>
         </div>
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">{String(error)}</div>
+        <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
+          {String(error)}
+          {(String(error).includes('HTTP 401') || String(error).includes('401')) && (
+            <div className="mt-2 text-slate-700">
+              인스타그램 연동이 필요하거나 인증이 만료되었습니다. 마이페이지에서 계정을 연동해 주세요.
+            </div>
+          )}
+        </div>
       )}
 
       {loading ? (
@@ -156,8 +188,10 @@ export default function DashboardInsights() {
         <>
           <div className="grid md:grid-cols-3 gap-6">
             <InsightStat label="팔로워" value={fmtNum(data?.followers_count)} sub={todayTrendText(data) || trendText(data?.series?.follows, data?.series?.unfollows)} />
-            <InsightStat label="도달" value={sumSeries(data?.series?.reach)} spark={data?.series?.reach} />
-            <InsightStat label="노출" value={sumSeries(data?.series?.impressions)} spark={data?.series?.impressions} />
+            <InsightStat label="도달(30일)" value={sumSeries(data?.series?.reach)} spark={data?.series?.reach} />
+            <InsightStat label="노출(30일)" value={sumSeries(data?.series?.impressions)} spark={data?.series?.impressions} />
+            <InsightStat label="프로필 방문(30일)" value={sumSeries(data?.series?.profile_views)} spark={data?.series?.profile_views} />
+            <InsightStat label="좋아요(게시일 기준 합계)" value={sumSeries(data?.series?.approx_likes_by_post_day)} />
           </div>
 
           {/* 그래프 섹션: 2열 배치 (responsive, with tooltips) */}

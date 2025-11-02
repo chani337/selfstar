@@ -102,3 +102,102 @@ async def update_persona_img(user_id: int, persona_num: int, img_value: str) -> 
                 await conn.commit()
             except Exception:
                 pass
+
+
+async def update_persona_fields(
+    user_id: int,
+    persona_num: int,
+    *,
+    name: str | None = None,
+    persona_img: str | None = None,
+    persona_parameters_patch: Dict[str, Any] | None = None,
+) -> None:
+    """Update persona fields safely.
+
+    - name: stored under persona_parameters.name (non-destructive merge)
+    - persona_img: replaces persona_img column (use S3 key or /media/...)
+    - persona_parameters_patch: shallow-merge into persona_parameters JSON
+    """
+    pool = await get_mysql_pool()
+    async with pool.acquire() as conn:
+        # Load existing JSON
+        params: Dict[str, Any] = {}
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            await cur.execute(
+                """
+                SELECT persona_parameters
+                FROM ss_persona
+                WHERE user_id=%s AND user_persona_num=%s
+                LIMIT 1
+                """,
+                (user_id, persona_num),
+            )
+            row = await cur.fetchone()
+            if row and row.get("persona_parameters"):
+                try:
+                    params = json.loads(row["persona_parameters"]) or {}
+                except Exception:
+                    params = {}
+
+        if not isinstance(params, dict):
+            params = {}
+        if name is not None:
+            params["name"] = name
+        if isinstance(persona_parameters_patch, dict) and persona_parameters_patch:
+            # shallow merge only
+            params.update(persona_parameters_patch)
+
+        # Build update statement dynamically
+        sets = ["persona_parameters=%s"]
+        values: List[Any] = [json.dumps(params, ensure_ascii=False)]
+        if persona_img is not None:
+            sets.append("persona_img=%s")
+            values.append(persona_img)
+        values.extend([user_id, persona_num])
+        async with conn.cursor() as cur2:
+            await cur2.execute(
+                f"UPDATE ss_persona SET {', '.join(sets)} WHERE user_id=%s AND user_persona_num=%s LIMIT 1",
+                tuple(values),
+            )
+            try:
+                await conn.commit()
+            except Exception:
+                pass
+
+
+async def delete_persona(user_id: int, persona_num: int) -> None:
+    """Delete persona and related records owned by the user.
+
+    This removes:
+    - ss_persona row
+    - ss_instagram_connector_persona token (if any)
+    - ss_instagram_event_seen ACKs (best-effort)
+    """
+    pool = await get_mysql_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            # Remove connector/token if exists
+            try:
+                await cur.execute(
+                    "DELETE FROM ss_instagram_connector_persona WHERE user_id=%s AND user_persona_num=%s",
+                    (user_id, persona_num),
+                )
+            except Exception:
+                pass
+            # Remove seen acks (best-effort)
+            try:
+                await cur.execute(
+                    "DELETE FROM ss_instagram_event_seen WHERE user_id=%s AND user_persona_num=%s",
+                    (user_id, persona_num),
+                )
+            except Exception:
+                pass
+            # Finally, remove persona
+            await cur.execute(
+                "DELETE FROM ss_persona WHERE user_id=%s AND user_persona_num=%s LIMIT 1",
+                (user_id, persona_num),
+            )
+            try:
+                await conn.commit()
+            except Exception:
+                pass

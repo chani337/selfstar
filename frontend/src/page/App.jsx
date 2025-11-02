@@ -11,6 +11,7 @@ import UserSetup from "./UserSetup.jsx";
 import Chat from "./Chat.jsx";
 import Alerts from "./Alerts.jsx";
 import Profiles from "./Profiles.jsx";
+import ManageProfiles from "./ManageProfiles.jsx";
 import ChatGateModal from "../components/ChatGateModal.jsx";
 import Dashboard from "./Dashboard.jsx";
 import DashboardInsights from "./DashboardInsights.jsx";
@@ -224,6 +225,7 @@ export default function App() {
   const [imgModalSize, setImgModalSize] = useState({ w: 1200, h: 0 });
 
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showManageProfiles, setShowManageProfiles] = useState(false);
   const [profileSelectRefreshTick, setProfileSelectRefreshTick] = useState(0);
 
   // 프로필 선택 모달 닫기 동작: /chat 경로에서 닫히면 홈으로 이동
@@ -284,7 +286,16 @@ export default function App() {
       setShowProfileModal(true);
     };
     window.addEventListener("open-profile-select", onOpenProfile);
-    return () => window.removeEventListener("open-profile-select", onOpenProfile);
+    const onOpenManage = () => {
+      // 관리 모달 열 때는 선택 모달을 닫아 중첩을 피한다
+      setShowProfileModal(false);
+      setShowManageProfiles(true);
+    };
+    window.addEventListener("open-manage-profiles", onOpenManage);
+    return () => {
+      window.removeEventListener("open-profile-select", onOpenProfile);
+      window.removeEventListener("open-manage-profiles", onOpenManage);
+    };
   }, []);
 
   // 새로고침으로 /chat 직접 진입 시, 이벤트 타이밍과 무관하게 즉시 프로필 선택 모달 오픈
@@ -357,6 +368,7 @@ export default function App() {
           {/* Imgcreate는 모달로도 띄우지만, 라우트 직접 접근도 허용 */}
           <Route path="/imgcreate" element={<Imgcreate />} />
           <Route path="/profiles" element={<Profiles />} />
+          <Route path="/profiles/manage" element={<ManageProfiles />} />
           <Route path="/chat" element={<Chat />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/dashboard/insights" element={<Dashboard />} />
@@ -497,6 +509,30 @@ export default function App() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 전역 프로필 관리 모달: 선택/이미지 생성 모달과 겹치지 않도록 별도 제어 */}
+      {!isEmbed && showManageProfiles && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-[1100] flex items-center justify-center bg-[rgba(15,23,42,0.45)] p-4"
+          onClick={() => setShowManageProfiles(false)}
+        >
+          <div
+            className="relative w-[min(1100px,96vw)] max-h-[90dvh] rounded-2xl border border-blue-200 bg-white p-4 shadow-[0_30px_70px_rgba(2,6,23,.35)] mx-auto my-auto overflow-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ManageProfiles
+              embedded
+              onClose={() => { setShowManageProfiles(false); navigate('/'); }}
+              onRequestCreateNew={() => {
+                setShowManageProfiles(false);
+                setShowImgcreateModal(true);
+              }}
+            />
           </div>
         </div>
       )}

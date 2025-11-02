@@ -179,3 +179,21 @@ def presign_get_url(key: str, expires_in: Optional[int] = None) -> str:
         ExpiresIn=expires_in,
     )
     return url
+
+
+def delete_object(key: str) -> bool:
+    """Delete an object by key. Returns True if no exception was raised.
+
+    If S3 is not enabled, this is a no-op and returns False (to signal nothing happened).
+    """
+    if not s3_enabled():
+        return False
+    try:
+        s3 = get_s3_client()
+        bucket = _env("NCP_S3_BUCKET")
+        s3.delete_object(Bucket=bucket, Key=key)
+        log.info("Deleted object from s3: s3://%s/%s", bucket, key)
+        return True
+    except Exception as e:
+        log.warning("Failed to delete s3 object %s: %s", key, e)
+        return False

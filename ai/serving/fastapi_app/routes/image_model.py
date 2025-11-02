@@ -62,7 +62,7 @@ def _get_client():
 
 
 # 모델명(고정 기본값)
-GEMINI_IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image-preview")
+GEMINI_IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
 
 
 def _build_prompt_from_fields(payload: dict) -> str:

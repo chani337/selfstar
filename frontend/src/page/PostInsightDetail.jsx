@@ -28,17 +28,28 @@ export default function PostInsightDetail(){
       <div className="mx-auto max-w-5xl px-4 py-5">
         <div className="flex items-center justify-between mb-4">
           <Link to="/dashboard/post-insights" className="btn light">← 게시글 인사이트</Link>
-          <a href={item?.permalink} target="_blank" rel="noreferrer" className="btn light">원본 보기</a>
+          <div className="flex items-center gap-2">
+            <a href={item?.permalink} target="_blank" rel="noreferrer" className="btn light">원본 보기</a>
+          </div>
         </div>
         {loading? (
           <div className="h-[60vh] rounded-2xl bg-slate-100 animate-pulse" />
         ) : error? (
-          <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">{String(error)}</div>
+          <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
+            {String(error)}
+            {(String(error).includes('HTTP 401') || String(error).includes('401')) && (
+              <div className="mt-2 text-slate-700">인스타그램 연동이 필요하거나 인증이 만료되었습니다. 마이페이지에서 계정을 연동해 주세요.</div>
+            )}
+          </div>
         ) : item? (
           <div className="rounded-2xl border bg-white p-4 grid md:grid-cols-2 gap-4">
             <div>
               <img src={item.media_url || item.thumbnail_url} alt="" className="w-full rounded-xl object-cover border" />
-              <div className="text-xs text-slate-500 mt-2">{fmtDate(item.timestamp)} · {(item.media_product_type || item.media_type) || ''}</div>
+              <div className="text-xs text-slate-500 mt-2 flex items-center gap-2">
+                <span>{fmtDate(item.timestamp)}</span>
+                <span className="inline-flex items-center px-1.5 py-[1px] rounded bg-slate-100 border text-[10px]">{(item.media_product_type || item.media_type) || ''}</span>
+                <span className="inline-flex items-center px-1.5 py-[1px] rounded bg-slate-100 border text-[10px]">ID: {item.id}</span>
+              </div>
               <div className="text-sm mt-1 whitespace-pre-wrap wrap-break-word">{item.caption}</div>
             </div>
             <div className="space-y-3">

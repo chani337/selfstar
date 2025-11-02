@@ -203,7 +203,14 @@ export default function ProfileSelect({ maxSlots = 4, onProfileChosen, onAddProf
         </div>
 
         <div className="actions">
-          <button className="btn" type="button" onClick={() => {}}>
+          <button className="btn" type="button" onClick={() => {
+            try {
+              if (typeof window !== 'undefined') {
+                // 신호를 올려(App 레벨에서 전역 모달 오픈)
+                window.dispatchEvent(new CustomEvent('open-manage-profiles'));
+              }
+            } catch {}
+          }}>
             프로필 관리
           </button>
           <button

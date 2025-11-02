@@ -3,7 +3,7 @@ import os
 import logging
 import traceback
 import base64
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict, Tuple, Any
 import httpx
 from google import genai
 from google.genai import types
@@ -30,9 +30,9 @@ except Exception:
     HumanMessage = AIMessage = None  # type: ignore
     _LC_AVAILABLE = False
 
-_SESSION_MEMORY: Dict[str, ConversationBufferMemory] = {}
+_SESSION_MEMORY: Dict[str, Any] = {}
 
-def _get_memory(session_id: Optional[str]) -> Optional[ConversationBufferMemory]:
+def _get_memory(session_id: Optional[str]) -> Optional[Any]:
     if not _LC_AVAILABLE or not session_id:
         return None
     mem = _SESSION_MEMORY.get(session_id)
@@ -152,7 +152,7 @@ def _get_client():
 
 
 GEMINI_TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-2.5-flash")
-GEMINI_IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image-preview")
+GEMINI_IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
 
 def _canonicalize_models(text_model: str, image_model: str):
     t = (text_model or "").strip()
@@ -162,9 +162,9 @@ def _canonicalize_models(text_model: str, image_model: str):
         t = "gemini-1.5-flash-002"  # avoid NOT_FOUND on v1beta
     if t == "gemini-1.5-pro":
         t = "gemini-2.5-flash"  # prefer newer available text-capable model
-    # Ensure we stick to the known-good image model used by /predict
+    # Map legacy names to the current preferred image model
     if i == "imagen-3.0-generate-001":
-        i = "gemini-2.5-flash-image-preview"
+        i = "gemini-2.5-flash-image"
     return t, i
 
 GEMINI_TEXT_MODEL, GEMINI_IMAGE_MODEL = _canonicalize_models(GEMINI_TEXT_MODEL, GEMINI_IMAGE_MODEL)

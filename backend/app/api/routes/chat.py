@@ -7,7 +7,7 @@ import httpx
 import logging
 import aiomysql
 from app.api.core.mysql import get_mysql_pool
-from app.core.s3 import s3_enabled, presign_get_url, put_data_uri
+from app.core.s3 import s3_enabled, presign_get_url, put_data_uri, delete_object
 
 # 파트: 채팅/이미지 생성 API
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -385,6 +385,71 @@ async def list_gallery(request: Request, persona_num: Optional[int] = None, limi
         # 프로덕션 안전: 갤러리 조회에 실패해도 빈 목록 반환하여 UI가 붕괴되지 않도록 함
         log.warning("failed to list gallery; returning empty list: %s", e)
         return {"ok": True, "items": []}
+
+
+@router.delete("/gallery/{img_id}")
+async def delete_gallery_item(request: Request, img_id: int):
+    """Delete a gallery image by id for the current user.
+
+    - Removes DB row (best-effort for both new/legacy schemas)
+    - Deletes S3 object by key if configured
+    """
+    user_id = request.session.get("user_id") if hasattr(request, "session") else None
+    if not user_id:
+        raise HTTPException(status_code=401, detail="not_logged_in")
+
+    key: Optional[str] = None
+    # Look up the row to get key and ensure ownership
+    try:
+        pool = await get_mysql_pool()
+        async with pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                try:
+                    await cur.execute(
+                        """
+                        SELECT img_key AS k
+                        FROM ss_chat_img
+                        WHERE img_id=%s AND user_id=%s
+                        LIMIT 1
+                        """,
+                        (int(img_id), int(user_id)),
+                    )
+                except Exception:
+                    await cur.execute(
+                        """
+                        SELECT persona_chat_img AS k
+                        FROM ss_chat_img
+                        WHERE chat_img_id=%s AND user_id=%s
+                        LIMIT 1
+                        """,
+                        (int(img_id), int(user_id)),
+                    )
+                row = await cur.fetchone()
+                key = (row or {}).get("k") if row else None
+            async with conn.cursor() as cur2:
+                # Try new schema id first
+                try:
+                    await cur2.execute("DELETE FROM ss_chat_img WHERE img_id=%s AND user_id=%s", (int(img_id), int(user_id)))
+                except Exception:
+                    # Fallback legacy id
+                    try:
+                        await cur2.execute("DELETE FROM ss_chat_img WHERE chat_img_id=%s AND user_id=%s", (int(img_id), int(user_id)))
+                    except Exception:
+                        pass
+                try:
+                    await conn.commit()
+                except Exception:
+                    pass
+    except Exception as e:
+        log.warning("delete_gallery lookup/delete failed: %s", e)
+
+    # Attempt to delete S3 object if key looks like one
+    try:
+        if key and not key.lower().startswith("http") and not key.startswith("/"):
+            delete_object(key)
+    except Exception:
+        pass
+    return {"ok": True}
 
 
 @router.get("/image")

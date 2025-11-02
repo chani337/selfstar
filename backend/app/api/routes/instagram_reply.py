@@ -25,6 +25,49 @@ class ReplyBody(BaseModel):
     message: str = Field(..., min_length=1, max_length=500)
 
 
+class PostCommentBody(BaseModel):
+    persona_num: int = Field(..., ge=0)
+    message: str = Field(..., min_length=1, max_length=1000)
+
+
+@router.post("/media/{media_id}/comment")
+async def post_comment_on_media(request: Request, media_id: str, body: PostCommentBody):
+    """Leave a new comment on a media as the linked persona account.
+
+    Graph API: POST /{ig-media-id}/comments with { message }
+    """
+    uid = _require_login(request)
+    mapping = await _get_persona_instagram_mapping(int(uid), int(body.persona_num))
+    if not mapping or not mapping.get("ig_user_id"):
+        raise HTTPException(status_code=400, detail="persona_not_linked")
+    token = await _get_persona_token(int(uid), int(body.persona_num))
+    if not token:
+        raise HTTPException(status_code=401, detail="persona_oauth_required")
+
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.post(
+                f"{IG_GRAPH}/{media_id}/comments",
+                data={"message": body.message, "access_token": token},
+            )
+        if r.status_code != 200:
+            try:
+                err = (r.json() or {}).get("error") or {}
+                if err.get("code") == 190:
+                    raise HTTPException(status_code=401, detail="persona_oauth_required")
+            except HTTPException:
+                raise
+            except Exception:
+                pass
+            raise HTTPException(status_code=r.status_code, detail=r.text)
+        data = r.json() or {}
+        return {"ok": True, "result": data}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"post_comment_failed:{e}")
+
+
 @router.post("/comments/reply")
 async def reply_to_comment(request: Request, body: ReplyBody):
     """Reply to a specific Instagram comment using Graph API.

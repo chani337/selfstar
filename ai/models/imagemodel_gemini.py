@@ -7,13 +7,13 @@ from google.genai import types
 from dotenv import load_dotenv
 
 # 환경변수 GOOGLE_API_KEY 필요
-# 모델: gemini-2.5-flash-image-preview (이미지 생성)
-MODEL_NAME = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image-preview")
+# 모델: gemini-2.5-flash-image (이미지 생성)
+MODEL_NAME = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
 
 _client = None
 log = logging.getLogger("gemini")
 
-ㅇ# 서비스별 분리: ai/.env를 우선 로드, 없으면 루트 .env 폴백
+# 서비스별 분리: ai/.env를 우선 로드, 없으면 루트 .env 폴백
 _THIS_DIR = os.path.dirname(__file__)
 _AI_DIR = os.path.abspath(os.path.join(_THIS_DIR, ".."))
 _REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "..", ".."))

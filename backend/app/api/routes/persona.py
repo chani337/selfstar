@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, status, Request
-from ..schemas.persona import PersonaUpsert
-from app.api.models.persona import create_persona, get_user_personas
+from ..schemas.persona import PersonaUpsert, PersonaUpdate
+from app.api.models.persona import create_persona, get_user_personas, update_persona_fields, delete_persona
 import logging
 from app.core.s3 import s3_enabled, presign_get_url
 import os
@@ -93,5 +93,41 @@ async def put_my_persona(payload: PersonaUpsert, request: Request):
         raise HTTPException(status_code=500, detail=f"Failed to save persona: {e}")
 
     return {"ok": True, "persona_id": int(persona_id), "persona_num": int(persona_num)}
+
+
+@router.patch("/{persona_num}", status_code=status.HTTP_200_OK)
+async def patch_my_persona(persona_num: int, payload: PersonaUpdate, request: Request):
+    user_id = request.session.get("user_id") if hasattr(request, "session") else None
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not logged in")
+    try:
+        await update_persona_fields(
+            int(user_id),
+            int(persona_num),
+            name=payload.name,
+            persona_img=payload.persona_img,
+            persona_parameters_patch=payload.persona_parameters or None,
+        )
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.exception("Failed to update persona user_id=%s num=%s: %s", user_id, persona_num, e)
+        raise HTTPException(status_code=500, detail="update_failed")
+
+
+@router.delete("/{persona_num}", status_code=status.HTTP_200_OK)
+async def remove_my_persona(persona_num: int, request: Request):
+    user_id = request.session.get("user_id") if hasattr(request, "session") else None
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not logged in")
+    try:
+        await delete_persona(int(user_id), int(persona_num))
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.exception("Failed to delete persona user_id=%s num=%s: %s", user_id, persona_num, e)
+        raise HTTPException(status_code=500, detail="delete_failed")
 
 

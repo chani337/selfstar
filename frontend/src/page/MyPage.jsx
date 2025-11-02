@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { API_BASE } from "@/api/client";
+import Credit from "./Credit.jsx";
 
 export default function MyPage() {
   const location = useLocation();
@@ -11,8 +12,9 @@ export default function MyPage() {
     { id: 2, text: "인스타 연동 확인", done: false },
     { id: 3, text: "샘플 사진 5장 업로드", done: false },
   ]);
-  const credit = 0;
+  const credit = 0; // 사용량 수치는 추후 연결(현재는 플랜 텍스트만 SS_USER에서 표기)
   const creditMax = 100;
+  const [userCredit, setUserCredit] = useState(null); // SS_USER.user_credit (e.g., standard/pro/business)
 
   // Personas state
   const [personas, setPersonas] = useState([]); // [{ num, img, name }]
@@ -31,6 +33,7 @@ export default function MyPage() {
   const [igError, setIgError] = useState(null);
   const [igMapping, setIgMapping] = useState(null); // { user_id, user_persona_num, ig_user_id, ig_username, fb_page_id }
   const [igMappingLoading, setIgMappingLoading] = useState(false);
+  const [showCreditModal, setShowCreditModal] = useState(false);
   // Insights는 마이페이지에서 표시하지 않음(대시보드 전용)
   // But we do show a simple follower count in header when linked
   const [followerCount, setFollowerCount] = useState(null);
@@ -39,6 +42,24 @@ export default function MyPage() {
   const [instaPosts, setInstaPosts] = useState([]); // [{id, media_url, thumbnail_url, permalink, timestamp, like_count, comments_count}]
   const [instaLoading, setInstaLoading] = useState(false);
   const [instaError, setInstaError] = useState(null);
+  // Manage mode toggles
+  const [managePhotos, setManagePhotos] = useState(false);
+  const [managePosts, setManagePosts] = useState(false);
+  // Post preview & comment modal
+  const [postModalOpen, setPostModalOpen] = useState(false);
+  const [postModalItem, setPostModalItem] = useState(null);
+  const [commentText, setCommentText] = useState("");
+  const [commenting, setCommenting] = useState(false);
+  const [drafting, setDrafting] = useState(false);
+  // Modal comments (other users) state
+  const [modalComments, setModalComments] = useState([]); // [{id, text, username, timestamp, like_count, replies?}]
+  const [modalCommentsLoading, setModalCommentsLoading] = useState(false);
+  const [modalCommentsError, setModalCommentsError] = useState(null);
+  // Per-comment reply inputs and status maps
+  const [replyInputs, setReplyInputs] = useState({}); // { [commentId]: text }
+  const [draftingMap, setDraftingMap] = useState({}); // { [commentId]: bool }
+  const [replyingMap, setReplyingMap] = useState({}); // { [commentId]: bool }
+  const [autoReplyingMap, setAutoReplyingMap] = useState({}); // { [commentId]: bool }
 
   // Helper: build and navigate to OAuth start (keeps current flags)
   const startInstagramOAuth = useCallback(() => {
@@ -85,6 +106,17 @@ export default function MyPage() {
         setLoadingPersona(false);
       }
     })();
+    // 동시에 현재 사용자 크레딧 플랜 조회
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE}/auth/me`, { credentials: "include" });
+        if (!r.ok) return;
+        const me = await r.json();
+        if (!alive) return;
+        const creditPlan = me?.user?.credit || null;
+        setUserCredit(creditPlan);
+      } catch {}
+    })();
     return () => { alive = false; };
   }, []);
 
@@ -100,6 +132,9 @@ export default function MyPage() {
     // Clear gallery to force reload
     setGallery([]);
     setGalleryError(null);
+    // Reset manage modes
+    setManagePhotos(false);
+    setManagePosts(false);
   };
 
   // After Instagram OAuth returns (?ig=connected), auto-open integrations modal and clean URL.
@@ -236,13 +271,30 @@ export default function MyPage() {
     const load = async () => {
       if (tab !== "posts") return;
       if (!activePersona?.num) return;
+      // leaving photos tab -> ensure managePhotos off
+      setManagePhotos(false);
       setInstaLoading(true);
       setInstaError(null);
       try {
-  const res = await fetch(`${API_BASE}/api/instagram/posts?persona_num=${activePersona.num}&limit=18`, { credentials: 'include' });
+        // 1) 먼저 캐시에서 가져오기
+        const res = await fetch(`${API_BASE}/api/instagram/posts?persona_num=${activePersona.num}&limit=18`, { credentials: 'include' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        setInstaPosts(Array.isArray(data?.items) ? data.items : []);
+        const items = Array.isArray(data?.items) ? data.items : [];
+        setInstaPosts(items);
+        // 2) 캐시가 비어 있고 IG 연동되어 있으면 즉시 동기화 시도
+        if (items.length === 0 && igMapping?.ig_user_id) {
+          try {
+            await fetch(`${API_BASE}/api/instagram/posts/sync?persona_num=${activePersona.num}&limit=18&days=30`, { method: 'POST', credentials: 'include' });
+            const r = await fetch(`${API_BASE}/api/instagram/posts?persona_num=${activePersona.num}&limit=18`, { credentials: 'include' });
+            if (r.ok) {
+              const dj = await r.json();
+              setInstaPosts(Array.isArray(dj?.items) ? dj.items : []);
+            }
+          } catch (err) {
+            // 동기화 실패는 치명적 아님
+          }
+        }
       } catch (e) {
         setInstaPosts([]);
         setInstaError(e?.message || String(e));
@@ -251,13 +303,15 @@ export default function MyPage() {
       }
     };
     load();
-  }, [tab, activePersona?.num]);
+  }, [tab, activePersona?.num, igMapping?.ig_user_id]);
 
   // Load chat images gallery when Photos tab is active or persona changes
   useEffect(() => {
     const load = async () => {
       if (tab !== "photos") return;
       if (!activePersona?.num) return;
+      // leaving posts tab -> ensure managePosts off
+      setManagePosts(false);
       setGalleryLoading(true);
       setGalleryError(null);
       try {
@@ -275,17 +329,43 @@ export default function MyPage() {
     load();
   }, [tab, activePersona?.num]);
 
+  // Load comments for selected post when modal opens or context changes
+  useEffect(() => {
+    const loadComments = async () => {
+      if (!postModalOpen || !postModalItem?.id || !activePersona?.num) {
+        setModalComments([]);
+        setModalCommentsError(null);
+        return;
+      }
+      setModalCommentsLoading(true);
+      setModalCommentsError(null);
+      try {
+        const r = await fetch(`${API_BASE}/api/instagram/media/${encodeURIComponent(postModalItem.id)}/comments?persona_num=${activePersona.num}&limit=50`, { credentials: 'include' });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = await r.json();
+        setModalComments(Array.isArray(j?.items) ? j.items : []);
+      } catch (e) {
+        setModalComments([]);
+        setModalCommentsError(e?.message || String(e));
+      } finally {
+        setModalCommentsLoading(false);
+      }
+    };
+    loadComments();
+  }, [postModalOpen, postModalItem?.id, activePersona?.num]);
+
   return (
     <main className="w-full min-h-screen bg-[#eaf5ff]">
       <div className="mx-auto max-w-6xl px-6 py-7">
         <HeaderSummary
           credit={credit}
           creditMax={creditMax}
+          userCredit={userCredit}
           personaName={activePersona?.name}
           personaImg={activePersona?.img}
           igLinked={!!igMapping}
           followerCount={followerCount}
-          onOpenIntegrations={() => { setSelectorOpen(false); setIntegrationsOpen(true); }}
+          onOpenCredits={() => setShowCreditModal(true)}
           onOpenProfileChange={() => { if (!integrationsOpen) setSelectorOpen(true); }}
           loadingPersona={loadingPersona}
         />
@@ -351,21 +431,27 @@ export default function MyPage() {
               <Card>
                 <div className="flex items-center justify-between mb-3">
                   <div className="text-sm text-slate-500">갤러리 {Array.isArray(gallery) ? gallery.length : 0}장</div>
-                  <button className="btn light" onClick={() => {
-                    // manual refresh
-                    setTab("photos");
-                    // trigger effect
-                    setGalleryLoading(true);
-                    (async () => {
-                      try {
-                        const res = await fetch(`${API_BASE}/api/chat/gallery?persona_num=${activePersona?.num || ''}`, { credentials: "include" });
-                        if (res.ok) {
-                          const data = await res.json();
-                          setGallery(Array.isArray(data?.items) ? data.items : []);
-                        }
-                      } finally { setGalleryLoading(false); }
-                    })();
-                  }}>새로고침</button>
+                  <div className="flex items-center gap-2">
+                    <button className="btn light" onClick={() => {
+                      // manual refresh
+                      setTab("photos");
+                      // trigger effect
+                      setGalleryLoading(true);
+                      (async () => {
+                        try {
+                          const res = await fetch(`${API_BASE}/api/chat/gallery?persona_num=${activePersona?.num || ''}`, { credentials: "include" });
+                          if (res.ok) {
+                            const data = await res.json();
+                            setGallery(Array.isArray(data?.items) ? data.items : []);
+                          }
+                        } finally { setGalleryLoading(false); }
+                      })();
+                    }}>새로고침</button>
+                    <button
+                      className={`btn ${managePhotos ? 'primary' : 'light'}`}
+                      onClick={() => setManagePhotos((v) => !v)}
+                    >{managePhotos ? '관리 종료' : '사진 관리'}</button>
+                  </div>
                 </div>
                 {galleryLoading && <div className="text-sm text-slate-500">불러오는 중…</div>}
                 {galleryError && <div className="text-sm text-red-600">갤러리를 불러오지 못했습니다: {galleryError}</div>}
@@ -380,6 +466,25 @@ export default function MyPage() {
                           <img src={g.url} alt="" className="w-full h-36 object-cover" loading="lazy" />
                         ) : (
                           <div className="w-full h-36 bg-slate-100" />
+                        )}
+                        {managePhotos && (
+                          <button
+                            className="absolute top-2 right-2 text-[11px] px-2 py-1 rounded-full bg-white/90 border border-slate-200 hover:bg-white shadow"
+                            title="사진 삭제"
+                            onClick={async (e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (!g.id) return;
+                              if (!window.confirm("이 이미지를 삭제할까요? (스토리지에서도 제거됩니다)")) return;
+                              try {
+                                const r = await fetch(`${API_BASE}/api/chat/gallery/${g.id}`, { method: 'DELETE', credentials: 'include' });
+                                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                                setGallery((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== g.id) : prev));
+                              } catch (err) {
+                                alert(`삭제에 실패했습니다: ${err?.message || err}`);
+                              }
+                            }}
+                          >삭제</button>
                         )}
                         {g.created_at && (
                           <div className="absolute bottom-0 left-0 right-0 text-[10px] text-white/90 bg-black/30 px-2 py-1">
@@ -407,13 +512,12 @@ export default function MyPage() {
                     <div className="text-sm text-slate-500">인스타 게시글 {Array.isArray(instaPosts) ? instaPosts.length : 0}개</div>
                     <div className="flex items-center gap-2">
                       <button
-                        className="btn light"
+                        className="btn"
                         onClick={async () => {
                           if (!activePersona?.num) { setSelectorOpen(true); return; }
                           setInstaLoading(true);
                           try {
                             await fetch(`${API_BASE}/api/instagram/posts/sync?persona_num=${activePersona.num}&limit=18&days=30`, { method: 'POST', credentials: 'include' });
-                            // ignore errors, then reload list
                           } catch (err) { console.debug('[MyPage] posts sync failed', err); }
                           try {
                             const r = await fetch(`${API_BASE}/api/instagram/posts?persona_num=${activePersona.num}&limit=18`, { credentials: 'include' });
@@ -424,28 +528,28 @@ export default function MyPage() {
                           } finally { setInstaLoading(false); }
                         }}
                       >동기화</button>
-                      <button className="btn" onClick={async () => {
-                        if (!activePersona?.num) { setSelectorOpen(true); return; }
-                        setInstaLoading(true);
-                        try {
-                          const r = await fetch(`${API_BASE}/api/instagram/posts?persona_num=${activePersona.num}&limit=18`, { credentials: 'include' });
-                          if (r.ok) {
-                            const data = await r.json();
-                            setInstaPosts(Array.isArray(data?.items) ? data.items : []);
-                          }
-                        } finally { setInstaLoading(false); }
-                      }}>새로고침</button>
+                      <button
+                        className={`btn ${managePosts ? 'primary' : 'light'}`}
+                        onClick={() => setManagePosts((v) => !v)}
+                      >{managePosts ? '관리 종료' : '게시글 관리'}</button>
                     </div>
                   </div>
                   {instaLoading && <div className="text-sm text-slate-500">불러오는 중…</div>}
-                  {instaError && <div className="text-sm text-red-600">게시글을 불러오지 못했습니다: {instaError}</div>}
+                  {instaError && (
+                    <div className="text-sm text-red-600">
+                      게시글을 불러오지 못했습니다: {instaError}
+                      {(String(instaError).includes('401') || String(instaError).includes('HTTP 401')) && (
+                        <div className="mt-1 text-slate-700">인스타그램 연동이 필요하거나 인증이 만료되었습니다. 우측의 연동 관리에서 재인증해 주세요.</div>
+                      )}
+                    </div>
+                  )}
                   {!instaLoading && !instaError && Array.isArray(instaPosts) && instaPosts.length === 0 && (
                     <Empty title="연동된 인스타 게시글이 없어요" action="동기화" />
                   )}
                   {!instaLoading && !instaError && Array.isArray(instaPosts) && instaPosts.length > 0 && (
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                       {instaPosts.map((p) => (
-                        <a key={p.id} href={p.permalink || '#'} target="_blank" rel="noreferrer" className="block group relative rounded-xl overflow-hidden border border-slate-200 bg-white/60">
+                        <button key={p.id} type="button" onClick={(e)=>{ e.preventDefault(); setPostModalItem(p); setCommentText(""); setPostModalOpen(true); }} className="text-left group relative rounded-xl overflow-hidden border border-slate-200 bg-white/60">
                           {p.media_type === 'VIDEO' && p.thumbnail_url ? (
                             <img src={p.thumbnail_url} alt="" className="w-full h-36 object-cover" loading="lazy" />
                           ) : p.media_url ? (
@@ -454,11 +558,36 @@ export default function MyPage() {
                             <div className="w-full h-36 bg-slate-100" />
                           )}
                           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+                          {managePosts && (
+                            <button
+                              className="absolute top-2 right-2 text-[11px] px-2 py-1 rounded-full bg-white/90 border border-slate-200 hover:bg-white shadow"
+                              title="게시글 삭제"
+                              onClick={async (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (!activePersona?.num) { setSelectorOpen(true); return; }
+                                if (!window.confirm("이 인스타 게시글을 삭제할까요? (목록에서는 제거되며, 인스타 삭제는 API 제한으로 실패할 수 있습니다)")) return;
+                                try {
+                                  const r = await fetch(`${API_BASE}/api/instagram/posts/${encodeURIComponent(p.id)}?persona_num=${activePersona.num}`, { method: 'DELETE', credentials: 'include' });
+                                  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                                  const data = await r.json().catch(() => ({}));
+                                  setInstaPosts((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== p.id) : prev));
+                                  if (data && data.deleted_on_instagram) {
+                                    alert("인스타그램에서 게시글이 삭제되었습니다.");
+                                  } else {
+                                    alert("목록에서 제거되었습니다. 인스타그램 앱에서 직접 삭제를 완료해 주세요 (API에서 게시글 삭제가 지원되지 않습니다).");
+                                  }
+                                } catch (err) {
+                                  alert(`삭제에 실패했습니다: ${err?.message || err}`);
+                                }
+                              }}
+                            >삭제</button>
+                          )}
                           <div className="absolute bottom-0 left-0 right-0 text-[10px] text-white/90 bg-black/30 px-2 py-1 flex items-center justify-between gap-2">
                             <span>{p.timestamp ? new Date(p.timestamp).toLocaleString() : ''}</span>
                             <span>❤ {fmtNum(p.like_count)} · 💬 {fmtNum(p.comments_count)}</span>
                           </div>
-                        </a>
+                        </button>
                       ))}
                     </div>
                   )}
@@ -581,12 +710,264 @@ export default function MyPage() {
           </div>
         </div>
       )}
+
+      {/* Credit Plans modal */}
+      {showCreditModal && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" role="dialog" aria-modal="true" onClick={() => setShowCreditModal(false)}>
+          <div className="w-[min(1100px,96vw)] rounded-2xl border border-slate-200 bg-white shadow-[0_30px_70px_rgba(2,6,23,0.28)] overflow-visible" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 flex items-center justify-between border-b">
+              <div className="font-semibold">크레딧 / 요금제</div>
+              <button className="btn" onClick={() => setShowCreditModal(false)}>닫기</button>
+            </div>
+            <div className="p-5">
+              <Credit />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Post preview & comment modal */}
+      {postModalOpen && postModalItem && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" role="dialog" aria-modal="true" onClick={()=> setPostModalOpen(false)}>
+          <div className="w-[min(900px,96vw)] rounded-2xl border border-slate-200 bg-white shadow-[0_30px_70px_rgba(2,6,23,0.28)] overflow-hidden" onClick={(e)=>e.stopPropagation()}>
+            <div className="px-5 py-4 flex items-center justify-between border-b">
+              <div className="font-semibold">게시글 미리보기</div>
+              <div className="flex items-center gap-2">
+                {postModalItem?.permalink && (
+                  <a href={postModalItem.permalink} target="_blank" rel="noreferrer" className="btn light">인스타에서 열기</a>
+                )}
+                <button className="btn" onClick={()=> setPostModalOpen(false)}>닫기</button>
+              </div>
+            </div>
+            <div className="p-5 grid md:grid-cols-2 gap-4">
+              <div>
+                {postModalItem.media_type === 'VIDEO' && postModalItem.thumbnail_url ? (
+                  <img src={postModalItem.thumbnail_url} alt="" className="w-full rounded-xl object-cover border" />
+                ) : postModalItem.media_url ? (
+                  <img src={postModalItem.media_url} alt="" className="w-full rounded-xl object-cover border" />
+                ) : (
+                  <div className="w-full aspect-square rounded-xl bg-slate-100" />
+                )}
+                <div className="text-xs text-slate-500 mt-2 flex items-center gap-2">
+                  <span>{postModalItem.timestamp ? new Date(postModalItem.timestamp).toLocaleString() : ''}</span>
+                  <span className="inline-flex items-center px-1.5 py-[1px] rounded bg-slate-100 border text-[10px]">{postModalItem.media_type || ''}</span>
+                </div>
+                <div className="text-sm mt-2 whitespace-pre-wrap break-words">{postModalItem.caption}</div>
+              </div>
+              <div className="space-y-3">
+                {/* Other users' comments list with per-comment reply */}
+                <div className="rounded-xl border bg-white/70 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-xs text-slate-500">다른 사용자 댓글</div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="btn light"
+                        onClick={async ()=>{
+                          if(!activePersona?.num) { setSelectorOpen(true); return; }
+                          setModalCommentsLoading(true);
+                          setModalCommentsError(null);
+                          try{
+                            const r = await fetch(`${API_BASE}/api/instagram/media/${encodeURIComponent(postModalItem.id)}/comments?persona_num=${activePersona.num}&limit=50`, { credentials: 'include' });
+                            if(!r.ok){ throw new Error(`HTTP ${r.status}`); }
+                            const j = await r.json();
+                            setModalComments(Array.isArray(j?.items)? j.items : []);
+                          }catch(e){ setModalComments([]); setModalCommentsError(e?.message || String(e)); }
+                          finally{ setModalCommentsLoading(false); }
+                        }}
+                      >새로고침</button>
+                    </div>
+                  </div>
+                  {modalCommentsLoading && <div className="text-sm text-slate-500">불러오는 중…</div>}
+                  {modalCommentsError && <div className="text-sm text-red-600">댓글을 불러오지 못했습니다: {modalCommentsError}</div>}
+                  {!modalCommentsLoading && !modalCommentsError && Array.isArray(modalComments) && modalComments.length === 0 && (
+                    <div className="text-sm text-slate-500">표시할 댓글이 없습니다.</div>
+                  )}
+                  {!modalCommentsLoading && !modalCommentsError && Array.isArray(modalComments) && modalComments.length > 0 && (
+                    <div className="space-y-3 max-h-80 overflow-auto pr-1">
+                      {modalComments.map((c) => (
+                        <div key={c.id} className="rounded-lg border border-slate-200 bg-white/60 p-2">
+                          <div className="text-xs text-slate-500 flex items-center justify-between">
+                            <span className="font-semibold">@{c.username || 'user'}</span>
+                            <span>{c.timestamp ? new Date(c.timestamp).toLocaleString() : ''}</span>
+                          </div>
+                          <div className="text-sm mt-1 whitespace-pre-wrap break-words">{c.text}</div>
+                          {Array.isArray(c.replies) && c.replies.length > 0 && (
+                            <div className="mt-2 pl-3 border-l">
+                              {c.replies.map(r => (
+                                <div key={r.id} className="text-[13px] text-slate-700 mt-1">
+                                  <span className="font-medium">@{r.username || 'user'}</span> {r.text}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <div className="mt-2">
+                            <textarea
+                              rows={2}
+                              className="w-full rounded-lg border p-2 text-sm"
+                              placeholder="이 댓글에 답글 작성"
+                              value={replyInputs[c.id] || ''}
+                              onChange={(e)=> setReplyInputs(prev => ({ ...prev, [c.id]: e.target.value }))}
+                            />
+                            <div className="mt-2 flex items-center justify-end gap-2">
+                              <button
+                                className="btn light"
+                                disabled={!!draftingMap[c.id]}
+                                onClick={async ()=>{
+                                  if(!activePersona?.num){ setSelectorOpen(true); return; }
+                                  setDraftingMap(prev=> ({ ...prev, [c.id]: true }));
+                                  try{
+                                    const r = await fetch(`${API_BASE}/api/instagram/comments/auto_draft`, {
+                                      method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+                                      body: JSON.stringify({ persona_num: activePersona.num, text: c.text || ' ', post_img: postModalItem.media_url || postModalItem.thumbnail_url || '', post: postModalItem.caption || '' })
+                                    });
+                                    const j = await r.json().catch(()=>null);
+                                    if(r.ok && j?.reply){ setReplyInputs(prev => ({ ...prev, [c.id]: j.reply })); }
+                                    else{ alert(`자동완성 실패: ${j?.detail || r.status}`); }
+                                  }catch(e){ alert(`자동완성 오류: ${e?.message || e}`); }
+                                  finally{ setDraftingMap(prev=> ({ ...prev, [c.id]: false })); }
+                                }}
+                              >{draftingMap[c.id]? '생성 중…':'자동완성'}</button>
+                              <button
+                                className="btn"
+                                disabled={!String(replyInputs[c.id]||'').trim() || !!replyingMap[c.id]}
+                                onClick={async ()=>{
+                                  if(!activePersona?.num){ setSelectorOpen(true); return; }
+                                  const msg = String(replyInputs[c.id]||'').trim();
+                                  if(!msg) return;
+                                  setReplyingMap(prev=> ({ ...prev, [c.id]: true }));
+                                  try{
+                                    const r = await fetch(`${API_BASE}/api/instagram/comments/reply`, {
+                                      method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+                                      body: JSON.stringify({ persona_num: activePersona.num, comment_id: c.id, message: msg })
+                                    });
+                                    const j = await r.json().catch(()=>null);
+                                    if(r.ok){
+                                      alert('답글이 등록되었습니다.');
+                                      setReplyInputs(prev => ({ ...prev, [c.id]: '' }));
+                                      // optional refresh
+                                      try{
+                                        setModalCommentsLoading(true);
+                                        const rr = await fetch(`${API_BASE}/api/instagram/media/${encodeURIComponent(postModalItem.id)}/comments?persona_num=${activePersona.num}&limit=50`, { credentials: 'include' });
+                                        if(rr.ok){ const jj = await rr.json(); setModalComments(Array.isArray(jj?.items)? jj.items : []); }
+                                      } finally { setModalCommentsLoading(false); }
+                                    } else {
+                                      const d = j?.detail || j || {};
+                                      const msg2 = typeof d==='string'? d : (d?.error || d?.message || JSON.stringify(d));
+                                      alert(`답글 실패: ${msg2}`);
+                                    }
+                                  }catch(e){ alert(`답글 오류: ${e?.message || e}`); }
+                                  finally{ setReplyingMap(prev=> ({ ...prev, [c.id]: false })); }
+                                }}
+                              >{replyingMap[c.id]? '등록 중…':'답글 달기'}</button>
+                              <button
+                                className="btn primary"
+                                disabled={!!autoReplyingMap[c.id]}
+                                onClick={async ()=>{
+                                  if(!activePersona?.num){ setSelectorOpen(true); return; }
+                                  setAutoReplyingMap(prev=> ({ ...prev, [c.id]: true }));
+                                  try{
+                                    const r = await fetch(`${API_BASE}/api/instagram/comments/auto_reply`, {
+                                      method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+                                      body: JSON.stringify({ persona_num: activePersona.num, comment_id: c.id, text: c.text || ' ', post_img: postModalItem.media_url || postModalItem.thumbnail_url || '', post: postModalItem.caption || '' })
+                                    });
+                                    const j = await r.json().catch(()=>null);
+                                    if(r.ok){
+                                      alert('자동 생성·등록 완료');
+                                      setReplyInputs(prev => ({ ...prev, [c.id]: j?.reply || '' }));
+                                      // optional refresh
+                                      try{
+                                        setModalCommentsLoading(true);
+                                        const rr = await fetch(`${API_BASE}/api/instagram/media/${encodeURIComponent(postModalItem.id)}/comments?persona_num=${activePersona.num}&limit=50`, { credentials: 'include' });
+                                        if(rr.ok){ const jj = await rr.json(); setModalComments(Array.isArray(jj?.items)? jj.items : []); }
+                                      } finally { setModalCommentsLoading(false); }
+                                    } else {
+                                      const d = j?.detail || j || {};
+                                      const msg2 = typeof d==='string'? d : (d?.error || d?.message || JSON.stringify(d));
+                                      alert(`자동 등록 실패: ${msg2}`);
+                                    }
+                                  }catch(e){ alert(`자동 등록 오류: ${e?.message || e}`); }
+                                  finally{ setAutoReplyingMap(prev=> ({ ...prev, [c.id]: false })); }
+                                }}
+                              >{autoReplyingMap[c.id]? '자동 등록 중…':'자동 등록'}</button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {!igMapping?.ig_user_id && (
+                    <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded mt-2 px-2 py-1">인스타 연동이 필요합니다. 마이페이지에서 계정을 연동해 주세요.</div>
+                  )}
+                </div>
+                <div className="rounded-xl border bg-white/70 p-3">
+                  <div className="text-xs text-slate-500 mb-2">댓글 작성</div>
+                  <textarea value={commentText} onChange={(e)=> setCommentText(e.target.value)} rows={5} className="w-full rounded-lg border p-2 text-sm" placeholder="댓글을 입력하세요" />
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <div className="text-[11px] text-slate-500">❤ {fmtNum(postModalItem.like_count)} · 💬 {fmtNum(postModalItem.comments_count)}</div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="btn light"
+                        disabled={drafting}
+                        onClick={async ()=>{
+                          if(!activePersona?.num){ setSelectorOpen(true); return; }
+                          setDrafting(true);
+                          try{
+                            const r = await fetch(`${API_BASE}/api/instagram/comments/auto_draft`, {
+                              method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+                              body: JSON.stringify({ persona_num: activePersona.num, text: commentText || ' ', post_img: postModalItem.media_url || postModalItem.thumbnail_url || '', post: postModalItem.caption || '' })
+                            });
+                            const j = await r.json().catch(()=>null);
+                            if(r.ok && j?.reply){ setCommentText(j.reply); }
+                            else {
+                              alert(`자동완성 실패: ${j?.detail || r.status}`);
+                            }
+                          }catch(e){ alert(`자동완성 오류: ${e?.message || e}`); }
+                          finally{ setDrafting(false); }
+                        }}
+                      >{drafting? '생성 중…':'자동완성'}</button>
+                      <button
+                        className="btn primary"
+                        disabled={!commentText.trim() || commenting}
+                        onClick={async ()=>{
+                          if(!activePersona?.num){ setSelectorOpen(true); return; }
+                          setCommenting(true);
+                          try{
+                            const r = await fetch(`${API_BASE}/api/instagram/media/${encodeURIComponent(postModalItem.id)}/comment`, {
+                              method:'POST', credentials:'include', headers:{'Content-Type':'application/json'},
+                              body: JSON.stringify({ persona_num: activePersona.num, message: commentText.trim() })
+                            });
+                            const j = await r.json().catch(()=>null);
+                            if(r.ok){
+                              alert('댓글이 등록되었습니다.');
+                              // 로컬 카운트 +1 반영
+                              setInstaPosts(prev => prev.map(x=> x.id===postModalItem.id? { ...x, comments_count: (Number(x.comments_count||0)+1) } : x));
+                              setPostModalItem(pm => pm? { ...pm, comments_count: Number(pm.comments_count||0)+1 } : pm);
+                              setCommentText('');
+                            }else{
+                              const d = j?.detail || j || {};
+                              const msg = typeof d==='string'? d : (d?.error || d?.message || JSON.stringify(d));
+                              alert(`댓글 실패: ${msg}`);
+                            }
+                          }catch(e){ alert(`댓글 오류: ${e?.message || e}`); }
+                          finally{ setCommenting(false); }
+                        }}
+                      >{commenting? '등록 중…':'댓글 달기'}</button>
+                    </div>
+                  </div>
+                  {!igMapping?.ig_user_id && (
+                    <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded mt-2 px-2 py-1">인스타 연동이 필요합니다. 마이페이지에서 계정을 연동해 주세요.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }          
 
-function HeaderSummary({ credit, creditMax, personaName, personaImg, igLinked, followerCount, onOpenIntegrations, onOpenProfileChange, loadingPersona }) {
-  const pct = Math.min(100, Math.round((credit / creditMax) * 100));
+function HeaderSummary({ credit, creditMax, userCredit, personaName, personaImg, igLinked, followerCount, onOpenCredits, onOpenProfileChange, loadingPersona }) {
   return (
     <div className="rounded-3xl border border-slate-200 bg-white/80 backdrop-blur p-6 shadow-[0_10px_30px_rgba(30,64,175,0.08)]">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
@@ -616,14 +997,11 @@ function HeaderSummary({ credit, creditMax, personaName, personaImg, igLinked, f
         <div className="w-full md:w-80">
           <div className="flex justify-between text-xs text-slate-500 mb-1">
             <span>크레딧</span>
-            <span>{credit} / {creditMax}</span>
-          </div>
-          <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-            <div className="h-full bg-linear-to-r from-blue-400 to-indigo-500" style={{ width: `${pct}%` }} />
+            <span>{userCredit ? String(userCredit).toUpperCase() : "-"}</span>
           </div>
           <div className="mt-3 flex gap-2">
             <button className="btn primary grow" onClick={onOpenProfileChange}>프로필 교체하기</button>
-            <button className="btn light" onClick={onOpenIntegrations}>연동관리</button>
+            <button className="btn light" onClick={onOpenCredits}>크레딧</button>
           </div>
         </div>
       </div>
