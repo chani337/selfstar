@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
 // API base: prefer Vite proxy; fallback to empty string
 const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env)
@@ -23,6 +23,13 @@ export default function Alerts() {
   const [sending, setSending] = useState(null); // comment_id currently being processed
   const [draft, setDraft] = useState(null); // { persona_num, comment_id, reply, posting }
   const [bulk, setBulk] = useState(null); // { persona_num, entries:[{comment_id,text,media,reply,status,error}], posting }
+  const autoImageEnabled = (typeof import.meta !== 'undefined' && import.meta.env)
+    ? ((import.meta.env.VITE_AUTO_IMAGE_COMMENTS ?? 'true').toString().toLowerCase() !== 'false')
+    : true;
+  const debugAutoImage = (typeof import.meta !== 'undefined' && import.meta.env)
+    ? ((import.meta.env.VITE_DEBUG_AUTO_IMAGE ?? 'false').toString().toLowerCase() === 'true')
+    : false;
+  const autoImageSentRef = useRef(new Set());
 
   const fetchOverview = async () => {
     setLoading(true);
@@ -52,6 +59,68 @@ export default function Alerts() {
   useEffect(() => {
     fetchOverview();
   }, []);
+
+  // 간단 키워드 판별 (서버도 동일 로직을 갖지만, 불필요한 호출 최소화 목적)
+  const looksLikeImageRequest = (t) => {
+    if (!t) return false;
+    const s = String(t).toLowerCase();
+    const kws = ['사진','이미지','그림','그려줘','만들어줘','image','picture','photo','render','generate'];
+    for (const k of kws) { if (s.includes(k.toLowerCase())) return true; }
+    return false;
+  };
+
+  // 알림 개요 로딩 이후, 이미지 요청 댓글 자동 처리 트리거
+  useEffect(() => {
+    if (!autoImageEnabled) return;
+    const personas = Array.isArray(data?.personas) ? data.personas : [];
+    const sent = autoImageSentRef.current;
+    const run = async () => {
+      for (const p of personas) {
+        const persona_num = p?.persona_num;
+        const items = Array.isArray(p?.items) ? p.items : [];
+        for (const m of items) {
+          const comments = Array.isArray(m?.comments) ? m.comments : [];
+          for (const c of comments) {
+            const cid = c?.id;
+            if (!cid || sent.has(cid)) continue;
+            if (!c?.text || !looksLikeImageRequest(c.text)) continue;
+            // fire-and-forget; 서버가 중복 방지(ACK) 처리
+            try {
+              sent.add(cid);
+              if (debugAutoImage) {
+                console.debug('[auto_image] trigger', { persona_num, comment_id: cid, text: c.text });
+              }
+              await fetch(`${API_BASE}/api/instagram/comments/auto_image`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  persona_num,
+                  comment_id: cid,
+                  text: c.text,
+                  post_img: m?.thumbnail_url || m?.media_url || null,
+                  post: m?.caption || null,
+                }),
+              }).then(async (r) => {
+                if (!r.ok) {
+                  let body = null;
+                  try { body = await r.json(); } catch { body = await r.text(); }
+                  if (debugAutoImage) console.warn('[auto_image] failed', r.status, body);
+                } else {
+                  if (debugAutoImage) console.debug('[auto_image] ok');
+                }
+              });
+              // 성공/실패와 무관하게 즉시 UI 갱신은 하지 않음(다음 새로고침/탭 이동 시 반영)
+            } catch (e) {
+              if (debugAutoImage) console.warn('[auto_image] exception', e);
+              // 실패 시 재시도는 다음 새로고침에 맡김
+            }
+          }
+        }
+      }
+    };
+    run();
+  }, [data, autoImageEnabled]);
 
   const handleAutoReply = async ({ persona_num, comment_id, text, media }) => {
     // 1) 드래프트 생성만 먼저 수행 (AI 호출만, Graph 포스트는 하지 않음)

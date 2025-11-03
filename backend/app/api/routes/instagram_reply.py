@@ -8,6 +8,7 @@ import json
 import aiomysql
 
 from app.api.core.mysql import get_mysql_pool
+from app.core.s3 import s3_enabled, presign_get_url, put_data_uri
 
 from .oauth_instagram import (
     GRAPH as IG_GRAPH,
@@ -364,6 +365,211 @@ async def auto_draft_reply(request: Request, body: AutoDraftBody):
         raise HTTPException(status_code=502, detail=f"ai_delegate_error: {e}")
 
     return {"ok": True, "reply": reply_text}
+
+
+# ===== 자동 이미지 생성: 댓글 기반 생성 → S3 저장 → 갤러리 반영 =====
+
+class AutoImageBody(BaseModel):
+    persona_num: int = Field(..., ge=0)
+    comment_id: str = Field(..., min_length=5)
+    text: str = Field(..., min_length=1, max_length=1000)
+    post_img: Optional[str] = Field(None, description="Post image URL (optional)")
+    post: Optional[str] = Field(None, description="Post caption (optional)")
+
+
+_IMAGE_KEYWORDS = [
+    "사진", "이미지", "그림", "그려줘", "만들어줘",
+    "image", "picture", "photo", "render", "generate",
+]
+
+
+def _looks_like_image_request(text: str) -> bool:
+    try:
+        low = (text or "").lower()
+        for k in _IMAGE_KEYWORDS:
+            if k.lower() in low:
+                return True
+        for s in ("만들어줘", "그려줘", "렌더링"):
+            if s in text:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _normalize_persona_img(raw: str) -> str:
+    try:
+        if raw.startswith("data:"):
+            return raw
+        if raw.startswith("/"):
+            base = (os.getenv("BACKEND_INTERNAL_URL") or "http://backend:8000").rstrip("/")
+            return f"{base}{raw}"
+        if raw.startswith("http://localhost") or raw.startswith("http://127.0.0.1"):
+            from urllib.parse import urlparse, urlunparse
+            p = urlparse(raw)
+            repl = p._replace(netloc="backend:8000")
+            return urlunparse(repl)
+        if s3_enabled() and not raw.lower().startswith("http"):
+            return presign_get_url(raw)
+        return raw
+    except Exception:
+        return raw
+
+
+@router.post("/comments/auto_image")
+async def auto_image_for_comment(request: Request, body: AutoImageBody):
+    """댓글 텍스트를 보고 이미지 요청이면 자동으로 생성하여 갤러리에 저장합니다.
+
+    - 판별: 간단 키워드 기반 (운영 시 Gemini 등으로 고도화 권장)
+    - 생성: AI 서비스 /chat/image 위임 (data URI 수신)
+    - 저장: S3 업로드 + ss_chat_img 기록
+    - 중복 방지: 옵션에 따라 ss_instagram_event_seen에 ACK 기록
+    """
+    uid = _require_login(request)
+
+    enabled = (os.getenv("AUTO_IMAGE_COMMENTS", "1").strip().lower() in ("1", "true", "yes"))
+    if not enabled:
+        return {"ok": False, "skipped": True, "reason": "disabled"}
+
+    if not _looks_like_image_request(body.text):
+        return {"ok": False, "skipped": True, "reason": "not_image_request"}
+
+    persona_img: Optional[str] = None
+    persona_params_json: Optional[str] = None
+    persona_db_id = int(body.persona_num)
+    try:
+        pool = await get_mysql_pool()
+        async with pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                await cur.execute(
+                    """
+                    SELECT persona_img, persona_parameters
+                    FROM ss_persona
+                    WHERE user_id=%s AND user_persona_num=%s
+                    LIMIT 1
+                    """,
+                    (int(uid), int(persona_db_id)),
+                )
+                row = await cur.fetchone()
+                if not row:
+                    raise HTTPException(status_code=404, detail="persona_not_found")
+                persona_img = row.get("persona_img")
+                pp = row.get("persona_parameters")
+                if isinstance(pp, (dict, list)):
+                    persona_params_json = json.dumps(pp, ensure_ascii=False)
+                else:
+                    persona_params_json = pp
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"persona_lookup_failed:{e}")
+
+    if not persona_img:
+        raise HTTPException(status_code=400, detail="persona_img_missing")
+
+    persona_img_norm = _normalize_persona_img(str(persona_img))
+
+    ai_url = (os.getenv("AI_SERVICE_URL") or "http://localhost:8600").rstrip("/")
+    payload = {
+        "user_text": body.text,
+        "persona_img": persona_img_norm,
+        "persona": persona_params_json or "",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            r = await client.post(f"{ai_url}/chat/image", json=payload)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"ai_delegate_error: {e}")
+    if r.status_code != 200:
+        try:
+            detail = r.json()
+        except Exception:
+            detail = r.text
+        raise HTTPException(status_code=502, detail={"ai_failed": True, "status": r.status_code, "body": detail})
+    ai_json = r.json() or {}
+    img_data_uri = ai_json.get("image")
+    if not (isinstance(img_data_uri, str) and img_data_uri.startswith("data:")):
+        raise HTTPException(status_code=502, detail="invalid_ai_response")
+
+    if not s3_enabled():
+        raise HTTPException(status_code=400, detail="s3_not_configured")
+    key = put_data_uri(
+        img_data_uri,
+        model=None,
+        key_prefix=f"chat/{int(uid)}/{int(persona_db_id)}",
+        base_prefix="",
+        include_model=False,
+        include_date=False,
+    )
+    url = presign_get_url(key)
+
+    chat_id = None
+    try:
+        pool = await get_mysql_pool()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                inserted = False
+                try:
+                    await cur.execute(
+                        """
+                        INSERT INTO ss_chat_img (user_id, persona_id, img_key)
+                        VALUES (%s, %s, %s)
+                        """,
+                        (int(uid), int(persona_db_id), key),
+                    )
+                    inserted = True
+                except Exception:
+                    try:
+                        await cur.execute(
+                            """
+                            INSERT INTO ss_chat_img (user_id, persona_id, persona_chat_img)
+                            VALUES (%s, %s, %s)
+                            """,
+                            (int(uid), int(persona_db_id), key),
+                        )
+                        inserted = True
+                    except Exception:
+                        inserted = False
+                if inserted:
+                    try:
+                        await conn.commit()
+                    except Exception:
+                        pass
+                    try:
+                        chat_id = cur.lastrowid
+                    except Exception:
+                        chat_id = None
+    except Exception:
+        pass
+
+    try:
+        if (os.getenv("AUTO_IMAGE_ACK_SEEN", "1").strip().lower() in ("1", "true", "yes")):
+            pool = await get_mysql_pool()
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    try:
+                        await cur.execute(
+                            """
+                            INSERT INTO ss_instagram_event_seen (external_id, user_id, user_persona_num)
+                            VALUES (%s,%s,%s)
+                            ON DUPLICATE KEY UPDATE updated_at=CURRENT_TIMESTAMP
+                            """,
+                            (str(body.comment_id), int(uid), int(persona_db_id)),
+                        )
+                        try:
+                            await conn.commit()
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "stored": {"key": key, "url": url, "id": chat_id},
+        "prompt": ai_json.get("prompt"),
+    }
 
 
 class BulkReplyItem(BaseModel):
