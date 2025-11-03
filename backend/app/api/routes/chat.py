@@ -278,7 +278,7 @@ async def image(req: ChatImageRequest, request: Request):
 
 
 @router.get("/gallery")
-async def list_gallery(request: Request, persona_num: Optional[int] = None, limit: int = 60, offset: int = 0):
+async def list_gallery(request: Request, persona_num: Optional[int] = None, limit: int = 60, offset: int = 0, prefix: Optional[str] = "chat/"):
     """현재 로그인 사용자의 채팅 생성 이미지 갤러리 목록을 반환.
 
     - 기본 정렬: 최신순(img_id DESC)
@@ -357,6 +357,13 @@ async def list_gallery(request: Request, persona_num: Optional[int] = None, limi
                         rows = []
         for r in rows:
             key = r.get("img_key") or ""
+            # 접두(prefix) 필터: http/https 또는 / 로 시작하는 키는 필터 제외
+            try:
+                if isinstance(prefix, str) and prefix and not key.lower().startswith("http") and not key.startswith("/"):
+                    if not key.startswith(prefix):
+                        continue
+            except Exception:
+                pass
             url = key
             if key and not key.lower().startswith("http") and not key.startswith("/"):
                 try:
@@ -388,6 +395,7 @@ async def list_gallery(request: Request, persona_num: Optional[int] = None, limi
 
 
 @router.delete("/gallery/{img_id}")
+@router.delete("/drafts/{img_id}")
 async def delete_gallery_item(request: Request, img_id: int):
     """Delete a gallery image by id for the current user.
 
@@ -465,6 +473,12 @@ async def image_usage():
         },
         "note": "세션 로그인이 필요합니다. 프론트엔드에서 '이미지 생성' 버튼을 눌러 호출하세요.",
     }
+
+
+@router.get("/drafts")
+async def list_drafts(request: Request, persona_num: Optional[int] = None, limit: int = 60, offset: int = 0):
+    """임시저장 목록(drafts/ 접두)."""
+    return await list_gallery(request, persona_num=persona_num, limit=limit, offset=offset, prefix="drafts/")
 
 
 @router.post("/session/start")

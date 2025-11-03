@@ -496,7 +496,7 @@ async def auto_image_for_comment(request: Request, body: AutoImageBody):
     key = put_data_uri(
         img_data_uri,
         model=None,
-        key_prefix=f"chat/{int(uid)}/{int(persona_db_id)}",
+        key_prefix=f"drafts/{int(uid)}/{int(persona_db_id)}",
         base_prefix="",
         include_model=False,
         include_date=False,

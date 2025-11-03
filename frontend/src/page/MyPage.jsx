@@ -45,6 +45,11 @@ export default function MyPage() {
   const [instaError, setInstaError] = useState(null);
   // Manage mode toggles
   const [managePhotos, setManagePhotos] = useState(false);
+  // Drafts state (temporary storage)
+  const [drafts, setDrafts] = useState([]); // [{id, key, url, created_at}]
+  const [draftsLoading, setDraftsLoading] = useState(false);
+  const [draftsError, setDraftsError] = useState(null);
+  const [manageDrafts, setManageDrafts] = useState(false);
   const [managePosts, setManagePosts] = useState(false);
   // Post preview & comment modal
   const [postModalOpen, setPostModalOpen] = useState(false);
@@ -358,6 +363,31 @@ export default function MyPage() {
     load();
   }, [tab, activePersona?.num]);
 
+  // Load drafts (temporary storage) when Drafts tab is active
+  useEffect(() => {
+    const load = async () => {
+      if (tab !== "drafts") return;
+      if (!activePersona?.num) return;
+      // leaving other tabs -> ensure manage toggles off
+      setManagePhotos(false);
+      setManageDrafts(false);
+      setDraftsLoading(true);
+      setDraftsError(null);
+      try {
+        const res = await fetch(`${API_BASE}/api/chat/drafts?persona_num=${activePersona.num}`, { credentials: "include" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setDrafts(Array.isArray(data?.items) ? data.items : []);
+      } catch (e) {
+        setDrafts([]);
+        setDraftsError(e?.message || String(e));
+      } finally {
+        setDraftsLoading(false);
+      }
+    };
+    load();
+  }, [tab, activePersona?.num]);
+
   // Load comments for selected post when modal opens or context changes
   useEffect(() => {
     const loadComments = async () => {
@@ -530,7 +560,67 @@ export default function MyPage() {
 
             {tab === "drafts" && (
               <Card>
-                <Empty title="아직 콘텐츠가 없어요" action="새로 만들기" />
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-sm text-slate-500">임시저장 {Array.isArray(drafts) ? drafts.length : 0}개</div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      className="btn"
+                      onClick={async () => {
+                        if (!activePersona?.num) { setSelectorOpen(true); return; }
+                        setDraftsLoading(true);
+                        try {
+                          const r = await fetch(`${API_BASE}/api/chat/drafts?persona_num=${activePersona.num}`, { credentials: 'include' });
+                          if (r.ok) {
+                            const data = await r.json();
+                            setDrafts(Array.isArray(data?.items) ? data.items : []);
+                          }
+                        } finally { setDraftsLoading(false); }
+                      }}
+                    >새로고침</button>
+                    <button
+                      className={`btn ${manageDrafts ? 'primary' : 'light'}`}
+                      onClick={() => setManageDrafts((v) => !v)}
+                    >{manageDrafts ? '관리 종료' : '임시저장 관리'}</button>
+                  </div>
+                </div>
+                {draftsLoading && <div className="text-sm text-slate-500">불러오는 중…</div>}
+                {draftsError && <div className="text-sm text-red-600">임시저장 불러오지 못했습니다: {draftsError}</div>}
+                {!draftsLoading && !draftsError && Array.isArray(drafts) && drafts.length === 0 && (
+                  <Empty title="아직 임시저장 항목이 없어요" action="바로 만들기" />
+                )}
+                {!draftsLoading && !draftsError && Array.isArray(drafts) && drafts.length > 0 && (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {drafts.map((d) => (
+                      <div key={d.id} className="group relative rounded-xl overflow-hidden border border-slate-200 bg-white/60">
+                        {d.url ? (
+                          <img src={d.url} alt="draft" className="w-full h-36 object-cover" loading="lazy" />
+                        ) : (
+                          <div className="w-full h-36 bg-slate-100" />
+                        )}
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+                        <div className="absolute bottom-0 left-0 right-0 text-[11px] text-white/90 px-2 py-1 bg-black/40">
+                          {d.created_at ? new Date(d.created_at).toLocaleString() : ''}
+                        </div>
+                        {manageDrafts && (
+                          <button
+                            className="absolute top-2 right-2 text-[11px] px-2 py-1 rounded-full bg-white/90 border border-slate-200 hover:bg-white shadow"
+                            title="삭제"
+                            onClick={async (e) => {
+                              e.preventDefault();
+                              try {
+                                const r = await fetch(`${API_BASE}/api/chat/drafts/${d.id}`, { method: 'DELETE', credentials: 'include' });
+                                if (r.ok) {
+                                  setDrafts((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== d.id) : prev));
+                                }
+                              } catch {}
+                            }}
+                          >삭제</button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {/* 빈 상태는 위 조건에서만 표시되며, 데이터가 있을 땐 표시하지 않습니다. */}
               </Card>
             )}
 
