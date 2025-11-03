@@ -213,3 +213,35 @@ async def update_user_profile(user_id: int, birthday: date, gender: str) -> Dict
     if not user:
         raise RuntimeError("사용자 정보를 찾을 수 없습니다.")
     return user
+
+
+# 사용자 크레딧 요금제 변경 — 변경 후 최신 사용자 정보 반환
+async def update_user_credit_plan(user_id: int, plan: str) -> Dict[str, Any]:
+    if not plan:
+        raise ValueError("plan is required")
+    # 간단한 검증: 내부 표준 키워드로 제한 (standard/pro/business)
+    norm = str(plan).strip().lower()
+    if norm not in ("standard", "free", "basic", "pro", "business", "biz"):
+        raise ValueError("invalid plan")
+    # alias 정규화
+    if norm in ("free", "basic"):
+        norm = "standard"
+    if norm == "biz":
+        norm = "business"
+
+    pool = await get_mysql_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                UPDATE ss_user
+                SET user_credit = %s
+                WHERE user_id = %s
+                """,
+                (norm, user_id),
+            )
+            await conn.commit()
+    user = await find_user_by_id(user_id)
+    if not user:
+        raise RuntimeError("사용자 정보를 찾을 수 없습니다.")
+    return user

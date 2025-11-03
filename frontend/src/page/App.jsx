@@ -391,7 +391,10 @@ export default function App() {
       {/* Chat 진입 게이트 모달 */}
       {!isEmbed && user && showGate && (
         <ChatGateModal
-          onCancel={() => setShowGate(false)}
+          onCancel={() => {
+            setShowGate(false);
+            try { navigate('/'); } catch {}
+          }}
           onConfirm={() => {
             setShowGate(false);
             // 채팅 입장 시 항상 프로필 셀렉트가 열리도록 전역 모달을 켠다
@@ -495,7 +498,7 @@ export default function App() {
                   <button
                     type="button"
                     className="h-10 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold"
-                    onClick={() => setShowProfileModal(false)}
+                    onClick={closeProfileModal}
                   >
                     닫기
                   </button>

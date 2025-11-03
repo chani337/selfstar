@@ -14,7 +14,7 @@ export default function ChatEntry() {
 
   return (
     <ChatGateModal
-      onCancel={() => nav(-1)}
+      onCancel={() => nav('/')}
       onConfirm={() => {
         setOpen(false);
         nav("/chat/room", { replace: true });

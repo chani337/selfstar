@@ -12,9 +12,10 @@ export default function MyPage() {
     { id: 2, text: "인스타 연동 확인", done: false },
     { id: 3, text: "샘플 사진 5장 업로드", done: false },
   ]);
-  const credit = 0; // 사용량 수치는 추후 연결(현재는 플랜 텍스트만 SS_USER에서 표기)
+  const credit = 0; // progress UI 자리표시(미사용)
   const creditMax = 100;
   const [userCredit, setUserCredit] = useState(null); // SS_USER.user_credit (e.g., standard/pro/business)
+  const [creditBalance, setCreditBalance] = useState(null); // /api/credits/me.balance
 
   // Personas state
   const [personas, setPersonas] = useState([]); // [{ num, img, name }]
@@ -115,6 +116,17 @@ export default function MyPage() {
         if (!alive) return;
         const creditPlan = me?.user?.credit || null;
         setUserCredit(creditPlan);
+      } catch {}
+    })();
+    // 크레딧 잔액 조회
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE}/api/credits/me`, { credentials: 'include' });
+        if (!r.ok) return;
+        const j = await r.json();
+        if (!alive) return;
+        if (typeof j?.balance === 'number') setCreditBalance(j.balance);
+        if (!userCredit && j?.plan) setUserCredit(j.plan);
       } catch {}
     })();
     return () => { alive = false; };
@@ -237,6 +249,23 @@ export default function MyPage() {
     })();
     return () => { alive = false; };
   }, [activePersona?.num, igMapping?.ig_user_id]);
+
+  // Listen for plan upgrade events from Credit component to reflect immediately
+  useEffect(() => {
+    const handler = (e) => {
+      const p = e?.detail?.plan;
+      if (p) setUserCredit(p);
+      // refresh balance optionally
+      (async () => {
+        try {
+          const r = await fetch(`${API_BASE}/api/credits/me`, { credentials: 'include' });
+          if (r.ok) { const j = await r.json(); if (typeof j?.balance === 'number') setCreditBalance(j.balance); }
+        } catch {}
+      })();
+    };
+    window.addEventListener('user-credit-changed', handler);
+    return () => window.removeEventListener('user-credit-changed', handler);
+  }, []);
 
   const linkPersonaToIG = async (account) => {
     if (!activePersona?.num) {
@@ -361,6 +390,7 @@ export default function MyPage() {
           credit={credit}
           creditMax={creditMax}
           userCredit={userCredit}
+          creditBalance={creditBalance}
           personaName={activePersona?.name}
           personaImg={activePersona?.img}
           igLinked={!!igMapping}
@@ -475,7 +505,7 @@ export default function MyPage() {
                               e.preventDefault();
                               e.stopPropagation();
                               if (!g.id) return;
-                              if (!window.confirm("이 이미지를 삭제할까요? (스토리지에서도 제거됩니다)")) return;
+                              if (!window.confirm("이 이미지를 삭제할까요?")) return;
                               try {
                                 const r = await fetch(`${API_BASE}/api/chat/gallery/${g.id}`, { method: 'DELETE', credentials: 'include' });
                                 if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -750,9 +780,9 @@ export default function MyPage() {
                 )}
                 <div className="text-xs text-slate-500 mt-2 flex items-center gap-2">
                   <span>{postModalItem.timestamp ? new Date(postModalItem.timestamp).toLocaleString() : ''}</span>
-                  <span className="inline-flex items-center px-1.5 py-[1px] rounded bg-slate-100 border text-[10px]">{postModalItem.media_type || ''}</span>
+                  <span className="inline-flex items-center px-1.5 py-px rounded bg-slate-100 border text-[10px]">{postModalItem.media_type || ''}</span>
                 </div>
-                <div className="text-sm mt-2 whitespace-pre-wrap break-words">{postModalItem.caption}</div>
+                <div className="text-sm mt-2 whitespace-pre-wrap wrap-break-word">{postModalItem.caption}</div>
               </div>
               <div className="space-y-3">
                 {/* Other users' comments list with per-comment reply */}
@@ -790,7 +820,7 @@ export default function MyPage() {
                             <span className="font-semibold">@{c.username || 'user'}</span>
                             <span>{c.timestamp ? new Date(c.timestamp).toLocaleString() : ''}</span>
                           </div>
-                          <div className="text-sm mt-1 whitespace-pre-wrap break-words">{c.text}</div>
+                          <div className="text-sm mt-1 whitespace-pre-wrap wrap-break-word">{c.text}</div>
                           {Array.isArray(c.replies) && c.replies.length > 0 && (
                             <div className="mt-2 pl-3 border-l">
                               {c.replies.map(r => (
@@ -967,7 +997,15 @@ export default function MyPage() {
   );
 }          
 
-function HeaderSummary({ credit, creditMax, userCredit, personaName, personaImg, igLinked, followerCount, onOpenCredits, onOpenProfileChange, loadingPersona }) {
+function HeaderSummary({ credit, creditMax, userCredit, creditBalance, personaName, personaImg, igLinked, followerCount, onOpenCredits, onOpenProfileChange, loadingPersona }) {
+  const planLabel = (() => {
+    const v = String(userCredit || '').toLowerCase();
+    if (!v) return '-';
+    if (v === 'standard' || v === 'free' || v === 'basic') return '무료';
+    if (v.includes('pro')) return '프로';
+    if (v.includes('biz') || v.includes('business')) return '비즈니스';
+    return String(userCredit);
+  })();
   return (
     <div className="rounded-3xl border border-slate-200 bg-white/80 backdrop-blur p-6 shadow-[0_10px_30px_rgba(30,64,175,0.08)]">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
@@ -997,7 +1035,7 @@ function HeaderSummary({ credit, creditMax, userCredit, personaName, personaImg,
         <div className="w-full md:w-80">
           <div className="flex justify-between text-xs text-slate-500 mb-1">
             <span>크레딧</span>
-            <span>{userCredit ? String(userCredit).toUpperCase() : "-"}</span>
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full border bg-slate-100 text-slate-700 border-slate-200">{planLabel}</span>
           </div>
           <div className="mt-3 flex gap-2">
             <button className="btn primary grow" onClick={onOpenProfileChange}>프로필 교체하기</button>
