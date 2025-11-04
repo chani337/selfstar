@@ -1,7 +1,8 @@
-// App.jsx
+﻿// App.jsx
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, NavLink, Link, useNavigate, useLocation } from "react-router-dom";
 import { API_BASE } from "@/api/client";
+import { useI18n } from "../../i18n/index.js";
 import Signup from "./Signup.jsx";
 import Imgcreate from "./Imgcreate.jsx";
 import MyPage from "./MyPage.jsx";
@@ -24,8 +25,8 @@ const base = "px-3 py-1.5 rounded-full transition";
 const active = "bg-blue-600 text-white shadow";
 const idle = "text-slate-600 hover:bg-slate-100";
 
-// 이미지
-// 소셜 로그인 아이콘은 모달 제거로 미사용
+// Social login images (kept as comments)
+// Third-party login modal utilities
 // import naverImg from "../../img/naver.png";
 // import kakaoImg from "../../img/kakao.png";
 // import googleImg from "../../img/google.png";
@@ -36,7 +37,7 @@ import Step3Carousel from "@/components/Step3Carousel.jsx";
 
 // Backend API base comes from .env (VITE_API_BASE); empty string in dev uses Vite proxy
 
-/* =============== 세션 사용자 훅 =============== */
+/* =============== ?몄뀡 ?ъ슜????=============== */
 function useAuth() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -48,7 +49,7 @@ function useAuth() {
     const timer = setTimeout(() => ctrl.abort(), 8000);
     try {
       setLoading(true);
-      // GET /auth/me: 현재 로그인 사용자 정보 조회 (세션 포함)
+  // GET /auth/me: fetch current authenticated user (session-based)
       const res = await fetch(`${API_BASE}/auth/me`, {
         method: "GET",
         credentials: "include",
@@ -57,13 +58,14 @@ function useAuth() {
         signal: ctrl.signal,
       });
       if (res.status === 401) { setUser(null); setError(null); return; }
-      if (!res.ok) { setUser(null); setError(`서버 오류: HTTP ${res.status}`); return; }
+      if (!res.ok) { setUser(null); setError(`?쒕쾭 ?ㅻ쪟: HTTP ${res.status}`); return; }
       const data = await res.json();
       setUser(data.authenticated ? data.user : null);
       setError(null);
     } catch (err) {
       setUser(null);
-      setError(err?.name === "AbortError" ? "요청 시간 초과" : (err?.message || "네트워크 오류"));
+  // Use i18n-safe messages to avoid encoding issues
+  setError(err?.name === "AbortError" ? t('alerts.error.network') : (err?.message || t('alerts.error.network')));
     } finally {
       clearTimeout(timer);
       setLoading(false);
@@ -72,12 +74,12 @@ function useAuth() {
 
   const logout = useCallback(async () => {
     try {
-      // POST /auth/logout: 로그아웃 (세션 무효화)
+  // POST /auth/logout: logout (invalidate session)
       const res = await fetch(`${API_BASE}/auth/logout`, { method: "POST", credentials: "include" });
-      if (res.ok || res.status === 204) { setUser(null); setError(null); }
-      else { setError(`로그아웃 실패: HTTP ${res.status}`); }
+  if (res.ok || res.status === 204) { setUser(null); setError(null); }
+  else { setError(t('alerts.error.http', { code: res.status })); }
     } catch (e) {
-      setError(e?.message || "로그아웃 중 오류");
+  setError(e?.message || t('alerts.error.network'));
     }
   }, []);
 
@@ -96,28 +98,32 @@ function useAuth() {
   return { user, loading, error, refresh, logout, setUser };
 }
 
-/* ========================= Intro (애니메이션 추가) ========================= */
+/* ========================= Intro (?좊땲硫붿씠??異붽?) ========================= */
 function WelcomeIntro({ user, onStart, onOpenGate, startHref = "/signup" }) {
+  const { lang, t } = useI18n();
   const css = `
     :root{ --brand:#2563EB; --text:#111827; --muted:#9CA3AF; --header-h:64px; }
     .intro-wrap{
-      /* 헤더를 제외한 1 화면 꽉 차게 */
+      /* ?ㅻ뜑瑜??쒖쇅??1 ?붾㈃ 苑?李④쾶 */
       min-height:calc(100dvh - var(--header-h)); width:100%;
       background:#ffffff; text-align:center;
-      display:flex; flex-direction:column; /* 상단/하단 영역 분리 */
+      display:flex; flex-direction:column; /* ?곷떒/?섎떒 ?곸뿭 遺꾨━ */
       padding:clamp(12px,3vh,24px) 16px clamp(16px,4vh,28px);
     }
-    /* 중앙 컨텐츠(타이틀/부제/시작하기)를 세로 중앙 정렬 */
+    /* 以묒븰 而⑦뀗痢???댄?/遺???쒖옉?섍린)瑜??몃줈 以묒븰 ?뺣젹 */
     .intro-content{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:clamp(12px,3vh,28px); }
-    .intro-title{
-      margin:0; font-size:clamp(28px,6.8vw,72px); line-height:1.08;
-      font-weight:900; color:#b3b7be; letter-spacing:.3px;
-    }
+    .intro-title{ margin:0; font-size:clamp(28px,6.8vw,72px); line-height:1.08; font-weight:900; color:#b3b7be; letter-spacing:.3px; text-align:center; }
     .intro-title .brand{
       background: linear-gradient(90deg, #4DA3FF 0%, #60a5ff 30%, #9ec5ff 50%, #4DA3FF 70%, #3582ff 100%);
       -webkit-background-clip:text; background-clip:text; color:transparent;
-      position:relative; display:inline-block;
-      animation:shine 2.4s linear infinite;
+      position:relative; display:inline-block; animation:shine 2.4s linear infinite;
+    }
+    .title-pre{ display:block; font-size:clamp(16px,2.6vw,26px); font-weight:800; color:#aeb4bb; letter-spacing:-.2px; margin-bottom:6px; }
+    .brand-main{
+      display:block; font-size:clamp(42px,8vw,84px); line-height:1; font-weight:900;
+      background: linear-gradient(90deg, #4DA3FF 0%, #60a5ff 35%, #2f6cfb 100%);
+      -webkit-background-clip:text; background-clip:text; color:transparent;
+      filter: drop-shadow(0 6px 16px rgba(77,163,255,.22));
     }
     @keyframes shine{
       0%{ filter:drop-shadow(0 0 0 rgba(77,163,255,.0)); }
@@ -129,6 +135,11 @@ function WelcomeIntro({ user, onStart, onOpenGate, startHref = "/signup" }) {
       animation:reveal .8s var(--delay,0s) cubic-bezier(.2,.7,.2,1) forwards;
       display:inline-block;
     }
+    /* fallback: explicit delay classes to avoid inline style parsing issues */
+    .delay-05{ animation-delay:.05s; }
+    .delay-15{ animation-delay:.15s; }
+    .delay-25{ animation-delay:.25s; }
+    .delay-35{ animation-delay:.35s; }
     @keyframes reveal{ to{ opacity:1; transform:none; filter:blur(0); } }
     .intro-sub{
       margin-top:6px; font-size:clamp(16px,3.2vw,28px); font-weight:900; color:#aab0b7;
@@ -157,10 +168,11 @@ function WelcomeIntro({ user, onStart, onOpenGate, startHref = "/signup" }) {
     .intro-start:focus-visible{ outline:none; box-shadow:0 0 0 4px rgba(37,99,235,.25); }
     @media (prefers-reduced-motion: reduce){
       .word, .intro-sub, .intro-start { animation:none !important; opacity:1 !important; transform:none !important; filter:none !important; }
+      .brand-main{ filter:none !important; }
       .intro-title .brand{ animation:none !important; }
     }
 
-    /* 작은 세로 화면에서 여백 축소 */
+    /* ?묒? ?몃줈 ?붾㈃?먯꽌 ?щ갚 異뺤냼 */
     @media (max-height: 720px){
       .intro-wrap{ gap:14px; }
       .intro-start{ margin-top:14px; }
@@ -168,30 +180,38 @@ function WelcomeIntro({ user, onStart, onOpenGate, startHref = "/signup" }) {
   `;
 
   const handleClick = (e) => {
-    // 로그인 상태면 게이트 모달을 연다
+  // If logged in, open chat gate modal
     if (user) {
       e.preventDefault();
       onOpenGate?.();
       return;
     }
-    // 비로그인 사용자는 가입/로그인 플로우 유지
+    // 鍮꾨줈洹몄씤 ?ъ슜?먮뒗 媛??濡쒓렇???뚮줈???좎?
+  // For guests, go to start/signup handler when provided
     if (onStart) { e.preventDefault(); onStart(); }
   };
 
   return (
     <>
       <style>{css}</style>
-      <main className="intro-wrap" aria-label="인트로">
+      <main className="intro-wrap" aria-label="intro">
         <div className="intro-content">
-          <h1 className="intro-title">
-            <span className="brand">SelfStar</span>
-            <span className="word" style={{ ["--delay"]: "0.05s" }}>에</span>{" "}
-            <span className="word" style={{ ["--delay"]: "0.15s" }}>오신</span>{" "}
-            <span className="word" style={{ ["--delay"]: "0.25s" }}>것을</span>{" "}
-            <span className="word" style={{ ["--delay"]: "0.35s" }}>환영합니다.</span>
-          </h1>
-          <div className="intro-sub">{user ? "채팅을 시작해보세요." : "인물을 생성하여 활동해보세요."}</div>
-          <a className="intro-start" href={startHref} onClick={handleClick}>{user ? "채팅 시작" : "시작하기"}</a>
+          {lang === 'en' ? (
+            <h1 className="intro-title">
+              <span className="title-pre">{t('home.title.pre')}</span>
+              <span className="brand-main">{t('home.brand')}</span>
+            </h1>
+          ) : (
+            <h1 className="intro-title">
+              <span className="brand">SelfStar</span>
+              <span className="word delay-05">{t('home.title.w1')}</span>{' '}
+              <span className="word delay-15">{t('home.title.w2')}</span>{' '}
+              <span className="word delay-25">{t('home.title.w3')}</span>{' '}
+              <span className="word delay-35">{t('home.title.w4')}</span>
+            </h1>
+          )}
+          <div className="intro-sub">{user ? t('home.subtitle.signed') : t('home.subtitle.anon')}</div>
+          <a className="intro-start" href={startHref} onClick={handleClick}>{user ? t('home.cta.signed') : t('home.cta.anon')}</a>
         </div>
       </main>
     </>
@@ -210,25 +230,27 @@ function Home({ user, onStart, onOpenGate }) {
 
 /* ========================= App Shell ========================= */
 export default function App() {
+  const { t } = useI18n();
   const location = useLocation();
   const { user, logout } = useAuth();
   const isEmbedParam = new URLSearchParams(location.search).get("embed") === "1";
   const isFramed = typeof window !== "undefined" && window.parent !== window;
   const isEmbed = isEmbedParam || isFramed;
-  // 모달 대신 /signup 라우트로 이동하므로 관련 상태 제거
+  // Router navigate util
   const navigate = useNavigate();
 
-  // Chat/Imgcreate 모달 상태
+  // Chat/Imgcreate 紐⑤떖 ?곹깭
   const [showGate, setShowGate] = useState(false);
   const [showImgcreateModal, setShowImgcreateModal] = useState(false);
-  // 모달 기본 크기(이전과 동일 체감): ProfileSelect와 유사한 1200px/90vh 규칙
+  // 紐⑤떖 湲곕낯 ?ш린(?댁쟾怨??숈씪 泥닿컧): ProfileSelect? ?좎궗??1200px/90vh 洹쒖튃
   const [imgModalSize, setImgModalSize] = useState({ w: 1200, h: 0 });
 
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showManageProfiles, setShowManageProfiles] = useState(false);
   const [profileSelectRefreshTick, setProfileSelectRefreshTick] = useState(0);
 
-  // 프로필 선택 모달 닫기 동작: /chat 경로에서 닫히면 홈으로 이동
+  // ?꾨줈???좏깮 紐⑤떖 ?リ린 ?숈옉: /chat 寃쎈줈?먯꽌 ?ロ엳硫??덉쑝濡??대룞
+  // Profile modal close: if currently at /chat, navigate home
   const closeProfileModal = useCallback(() => {
     setShowProfileModal(false);
     try {
@@ -238,7 +260,8 @@ export default function App() {
     } catch {}
   }, [location.pathname, navigate]);
 
-  // 외부에서(예: Chat) 이미지 생성 모달을 열라는 신호
+  // ?몃??먯꽌(?? Chat) ?대?吏 ?앹꽦 紐⑤떖???대씪???좏샇
+  // Open image-create modal when receiving window event
   useEffect(() => {
     const onOpenImgcreate = () => {
       setShowImgcreateModal(true);
@@ -247,20 +270,22 @@ export default function App() {
     return () => window.removeEventListener("open-imgcreate", onOpenImgcreate);
   }, []);
 
-  // Imgcreate(iframe)에서 넘어오는 메시지 처리 (크기 메시지는 무시하여 고정 크기 유지)
+  // Imgcreate(iframe)?먯꽌 ?섏뼱?ㅻ뒗 硫붿떆吏 泥섎━ (?ш린 硫붿떆吏??臾댁떆?섏뿬 怨좎젙 ?ш린 ?좎?)
   useEffect(() => {
     const onMsg = (e) => {
       const d = e?.data;
       if (!d || !d.type) return;
       if (d.type === "imgcreate-size") {
-        // 이전에는 크기 자동 조절을 했으나, 요청에 따라 고정 크기 유지
+        // ?댁쟾?먮뒗 ?ш린 ?먮룞 議곗젅???덉쑝?? ?붿껌???곕씪 怨좎젙 ?ш린 ?좎?
+  // Skip dynamic sizing in this embed; keep fixed safe size
         return;
       }
       if (d.type === "persona-created") {
-        // 새 프로필 생성 완료: 크리에이터 모달 닫고, 프로필 선택 모달을 열어 새 항목을 보여준다
+        // ???꾨줈???앹꽦 ?꾨즺: ?щ━?먯씠??紐⑤떖 ?リ퀬, ?꾨줈???좏깮 紐⑤떖???댁뼱 ????ぉ??蹂댁뿬以??
+  // Persona created: close iframe, refresh chooser, then open selector
         try { setShowImgcreateModal(false); } catch {}
         setProfileSelectRefreshTick((v) => v + 1);
-        // 채팅 페이지에서는 채팅의 선택 플로우를 사용하고, 그 외에는 전역 모달을 연다
+        // 梨꾪똿 ?섏씠吏?먯꽌??梨꾪똿???좏깮 ?뚮줈?곕? ?ъ슜?섍퀬, 洹??몄뿉???꾩뿭 紐⑤떖???곕떎
         if (location.pathname === "/chat") {
           try { window.dispatchEvent(new CustomEvent("open-profile-select")); } catch {}
         } else {
@@ -269,7 +294,8 @@ export default function App() {
         return;
       }
       if (d.type === "open-profile-select") {
-        // 외부(iframe 등)에서 열린 요청도 전역 모달로 처리
+        // ?몃?(iframe ???먯꽌 ?대┛ ?붿껌???꾩뿭 紐⑤떖濡?泥섎━
+  // Open profile selector on external request
         setProfileSelectRefreshTick((v) => v + 1);
         setShowProfileModal(true);
         return;
@@ -279,7 +305,8 @@ export default function App() {
     return () => window.removeEventListener("message", onMsg);
   }, []);
 
-  // 전역 커스텀 이벤트로도 프로필 선택 모달을 열 수 있게 처리
+  // ?꾩뿭 而ㅼ뒪? ?대깽?몃줈???꾨줈???좏깮 紐⑤떖???????덇쾶 泥섎━
+  // Listen for global events to open/close profile selection
   useEffect(() => {
     const onOpenProfile = () => {
       setProfileSelectRefreshTick((v) => v + 1);
@@ -287,7 +314,7 @@ export default function App() {
     };
     window.addEventListener("open-profile-select", onOpenProfile);
     const onOpenManage = () => {
-      // 관리 모달 열 때는 선택 모달을 닫아 중첩을 피한다
+      // 愿由?紐⑤떖 ???뚮뒗 ?좏깮 紐⑤떖???レ븘 以묒꺽???쇳븳??
       setShowProfileModal(false);
       setShowManageProfiles(true);
     };
@@ -298,7 +325,7 @@ export default function App() {
     };
   }, []);
 
-  // 새로고침으로 /chat 직접 진입 시, 이벤트 타이밍과 무관하게 즉시 프로필 선택 모달 오픈
+  // ?덈줈怨좎묠?쇰줈 /chat 吏곸젒 吏꾩엯 ?? ?대깽????대컢怨?臾닿??섍쾶 利됱떆 ?꾨줈???좏깮 紐⑤떖 ?ㅽ뵂
   useEffect(() => {
     if (!isEmbed && location.pathname === "/chat") {
       setProfileSelectRefreshTick((v) => v + 1);
@@ -307,7 +334,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, isEmbed]);
 
-  // Chat은 /chat 진입 전 게이트 모달을 통해 진입
+  // Chat? /chat 吏꾩엯 ??寃뚯씠??紐⑤떖???듯빐 吏꾩엯
 
   return (
     <div className="min-h-screen flex flex-col bg-[linear-gradient(180deg,#f8fbff_0%,#ffffff_40%,#f7f7fb_100%)] text-slate-900">
@@ -321,19 +348,19 @@ export default function App() {
             <span className="text-yellow-400">-</span>
           </div>
           <nav className="hidden md:flex items-center gap-5 md:gap-7 text-sm font-semibold ml-36">
-            <NavLink to="/" end className={({ isActive }) => `${base} ${isActive ? active : idle}`}>홈</NavLink>
+            <NavLink to="/" end className={({ isActive }) => `${base} ${isActive ? active : idle}`}>{t('header.home')}</NavLink>
             <NavLink
               to="/chat"
               className={({ isActive }) => `${base} ${isActive ? active : idle}`}
               onClick={(e) => {
-                // 로그인 사용자는 헤더에서 채팅 클릭 시에도 게이트 모달을 먼저 띄움
+                // If logged in, show the chat safety gate modal before navigating
                 if (user) { e.preventDefault(); setShowGate(true); }
               }}
             >
-              채팅
+              {t('header.chat')}
             </NavLink>
-            <NavLink to="/mypage" className={({ isActive }) => `${base} ${isActive ? active : idle}`}>마이페이지</NavLink>
-            <NavLink to="/alerts" className={({ isActive }) => `${base} ${isActive ? active : idle}`}>알림</NavLink>
+            <NavLink to="/mypage" className={({ isActive }) => `${base} ${isActive ? active : idle}`}>{t('header.mypage')}</NavLink>
+            <NavLink to="/alerts" className={({ isActive }) => `${base} ${isActive ? active : idle}`}>{t('header.alerts')}</NavLink>
           </nav>
           <div className="flex items-center gap-3">
             {user ? (
@@ -344,14 +371,14 @@ export default function App() {
                   ) : (
                     <div className="w-6 h-6 rounded-full bg-slate-200" />
                   )}
-                  <span className="text-sm font-semibold">{user.nick || "사용자"}</span>
+                  <span className="text-sm font-semibold">{user?.nick || '사용자'}</span>
                 </div>
-                <button onClick={logout} className="text-xs text-slate-500 hover:text-red-600 underline underline-offset-2" title="로그아웃">
-                  로그아웃
+                <button onClick={logout} className="text-xs text-slate-500 hover:text-red-600 underline underline-offset-2" title={t('header.logout')}>
+                  {t('header.logout')}
                 </button>
               </div>
             ) : (
-              <Link to="/signup" className="btn-ghost">회원가입 / 로그인</Link>
+              <Link to="/signup" className="btn-ghost">{t('header.auth')}</Link>
             )}
           </div>
         </div>
@@ -365,7 +392,7 @@ export default function App() {
           <Route path="/signup" element={<Signup />} />
           <Route path="/consent" element={<ConsentPage />} />
           <Route path="/setup" element={<UserSetup />} />
-          {/* Imgcreate는 모달로도 띄우지만, 라우트 직접 접근도 허용 */}
+          {/* Imgcreate??紐⑤떖濡쒕룄 ?꾩슦吏留? ?쇱슦??吏곸젒 ?묎렐???덉슜 */}
           <Route path="/imgcreate" element={<Imgcreate />} />
           <Route path="/profiles" element={<Profiles />} />
           <Route path="/profiles/manage" element={<ManageProfiles />} />
@@ -387,8 +414,7 @@ export default function App() {
         </Routes>
       </main>
 
-      {/* Chat 진입 게이트 모달 */}
-      {/* Chat 진입 게이트 모달 */}
+  {/* Chat enter gate modal */}
       {!isEmbed && user && showGate && (
         <ChatGateModal
           onCancel={() => {
@@ -397,7 +423,7 @@ export default function App() {
           }}
           onConfirm={() => {
             setShowGate(false);
-            // 채팅 입장 시 항상 프로필 셀렉트가 열리도록 전역 모달을 켠다
+            // 梨꾪똿 ?낆옣 ????긽 ?꾨줈????됲듃媛 ?대━?꾨줉 ?꾩뿭 紐⑤떖??耳좊떎
             setProfileSelectRefreshTick((v) => v + 1);
             setShowProfileModal(true);
             navigate("/chat");
@@ -405,7 +431,7 @@ export default function App() {
         />
       )}
 
-      {/* Imgcreate 모달: 동일 출처 iframe으로 페이지 자체를 내장 렌더링(스타일 붕괴 방지) */}
+  {/* Imgcreate modal (embedded iframe) */}
       {!isEmbed && showImgcreateModal && (
         <div
           role="dialog"
@@ -416,7 +442,7 @@ export default function App() {
           <div
             style={{
               position: "relative",
-              // ProfileSelect와 동일한 체감 크기: min(1200px, 96vw) x max 90dvh
+              // ProfileSelect? ?숈씪??泥닿컧 ?ш린: min(1200px, 96vw) x max 90dvh
               width: Math.min(1200, Math.floor((typeof window !== "undefined" ? window.innerWidth : 1920) * 0.96)),
               height: Math.min(Math.floor((typeof window !== "undefined" ? window.innerHeight : 1080) * 0.90), Math.floor((typeof window !== "undefined" ? window.innerHeight : 1080) * 0.96)),
               borderRadius: 18,
@@ -427,9 +453,9 @@ export default function App() {
             onClick={(e) => e.stopPropagation()}
           >
             <button
-              aria-label="닫기"
+              aria-label={t('common.close')}
               onClick={() => {
-                // X 버튼 클릭 시 메인으로 이동하며 모달을 닫습니다.
+                // Close and navigate home
                 setShowImgcreateModal(false);
                 try { navigate("/"); } catch {}
               }}
@@ -438,7 +464,7 @@ export default function App() {
               ×
             </button>
             <iframe
-              title="이미지 생성"
+              title="Image create"
               src="/imgcreate?embed=1"
               style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }}
             />
@@ -448,7 +474,7 @@ export default function App() {
 
   {!isEmbed && location.pathname !== "/chat" && <Footer />}
 
-      {/* 전역 프로필 선택 모달: 어디서든 불러 사용할 수 있도록 App 레벨에서 제공 */}
+  {/* Profile select modal */}
       {!isEmbed && showProfileModal && (
         <div
           role="dialog"
@@ -461,53 +487,55 @@ export default function App() {
             onClick={(e) => e.stopPropagation()}
           >
             <button
-              aria-label="닫기"
+              aria-label={t('common.close')}
               onClick={closeProfileModal}
               className="absolute top-2.5 right-3 w-9 h-9 rounded-full border bg-white shadow"
             >
               ×
             </button>
-            {/* 로그인 상태에 따라 모달 내용을 분기 */}
+            {/* 濡쒓렇???곹깭???곕씪 紐⑤떖 ?댁슜??遺꾧린 */}
+            {/* Logged-in: show profile selection */}
+// Utilities: animation/reveal below
             {user ? (
-              // ProfileSelect: 선택 시 persona-chosen 이벤트를 전파하고 필요시 채팅으로 이동
+              // ProfileSelect: ?좏깮 ??persona-chosen ?대깽?몃? ?꾪뙆?섍퀬 ?꾩슂??梨꾪똿?쇰줈 ?대룞
               <ProfileSelect
                 maxSlots={4}
                 refreshKey={profileSelectRefreshTick}
                 onAddProfileClick={() => {
                   setShowProfileModal(false);
-                  // 이미지 생성 모달 열기
+                  // ?대?吏 ?앹꽦 紐⑤떖 ?닿린
                   setShowImgcreateModal(true);
                 }}
                 onProfileChosen={(p) => {
                   try { if (p?.num) localStorage.setItem("activePersonaNum", String(p.num)); } catch {}
                   try { window.dispatchEvent(new CustomEvent("persona-chosen", { detail: p })); } catch {}
                   setShowProfileModal(false);
-                  // 채팅으로 이동하거나, 이미 채팅이면 그대로 유지(채팅은 이벤트를 받아 새로고침)
+                  // 梨꾪똿?쇰줈 ?대룞?섍굅?? ?대? 梨꾪똿?대㈃ 洹몃?濡??좎?(梨꾪똿? ?대깽?몃? 諛쏆븘 ?덈줈怨좎묠)
                   if (location.pathname !== "/chat") {
                     navigate("/chat");
                   }
                 }}
               />
             ) : (
-              // 비로그인: 로그인 유도 뷰 표시
+              // Guest: show login prompt
               <div className="px-3 py-4 flex flex-col items-center text-center">
-                <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-200 text-blue-600 grid place-items-center text-2xl font-black mb-3">🔐</div>
+                <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-200 text-blue-600 grid place-items-center text-2xl font-black mb-3">🔒</div>
                 <h2 className="text-xl font-extrabold tracking-tight mb-1">로그인이 필요합니다</h2>
-                <p className="text-slate-600 text-sm mb-4">채팅을 시작하려면 먼저 로그인해주세요. 로그인 후 프로필을 선택하거나 새로 만들 수 있어요.</p>
+                <p className="text-slate-600 text-sm mb-4">{t('alerts.error.auth')}</p>
                 <div className="flex gap-2">
                   <button
                     type="button"
                     className="h-10 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold"
                     onClick={closeProfileModal}
                   >
-                    닫기
+                    {t('common.close')}
                   </button>
                   <button
                     type="button"
                     className="h-10 px-5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow"
                     onClick={() => { setShowProfileModal(false); navigate("/signup"); }}
                   >
-                    로그인 바로가기
+                    {t('header.auth')}
                   </button>
                 </div>
               </div>
@@ -516,7 +544,7 @@ export default function App() {
         </div>
       )}
 
-      {/* 전역 프로필 관리 모달: 선택/이미지 생성 모달과 겹치지 않도록 별도 제어 */}
+  {/* Manage profiles modal */}
       {!isEmbed && showManageProfiles && (
         <div
           role="dialog"
@@ -543,12 +571,12 @@ export default function App() {
   );
 }
 
-/* ========================= 보호 라우트 ========================= */
+/* ========================= 蹂댄샇 ?쇱슦??========================= */
 function Private({ user, children }) {
   return (
     <>
       {!user ? (
-        <div className="mx-auto max-w-4xl px-6 py-12 text-slate-500">로그인이 필요합니다.</div>
+        <div className="mx-auto max-w-4xl px-6 py-12 text-slate-500">{useI18n().t('alerts.error.auth')}</div>
       ) : (
         children
       )}
@@ -558,9 +586,9 @@ function Private({ user, children }) {
 
 
 /* ========================= UI Utilities ========================= */
-// 제거: 모달/팝오버 관련 컴포넌트는 더 이상 사용하지 않음
+// ?쒓굅: 紐⑤떖/?앹삤踰?愿??而댄룷?뚰듃?????댁긽 ?ъ슜?섏? ?딆쓬
 
-/* ========================= Reveal / Landing (자리표시용) ========================= */
+/* ========================= Reveal / Landing (?먮━?쒖떆?? ========================= */
 function useInView(threshold = 0.15) {
   const ref = useRef(null);
   const [show, setShow] = useState(false);
@@ -603,16 +631,16 @@ function LandingSections() {
               <div className="card p-6 mb-2">
                 <div className="text-3xl font-black text-blue-500 mb-3">01</div>
                 <p className="text-slate-700 leading-relaxed">
-                  캠퍼스 무드 그대로, <br />
-                  나만의 AI 인플루언서를 지금 우리 서비스에서 시작해보세요!
+                  Create with prompts and styles. <br />
+                  Start your AI-powered content journey.
                 </p>
               </div>
             </Reveal>
 
             <Reveal from="up" delay={200}>
               <div className="flex items-center justify-center gap-3 mr-12">
-                <span className="text-2xl md:text-3xl text-blue-600">»» Step 1</span>
-                <span className="text-slate-500">인플루언서 이름과 특징 · 옵션을 선택해주세요.</span>
+                <span className="text-2xl md:text-3xl text-blue-600">Step 1</span>
+                <span className="text-slate-500">Pick styles and categories to start.</span>
               </div>
             </Reveal>
           </div>
@@ -623,14 +651,14 @@ function LandingSections() {
             <Reveal from="left">
               <div className="card p-6">
                 <div className="text-3xl font-black text-blue-500 mb-3">02</div>
-                <p className="text-slate-700">요청한 이미지를 기반으로 멋진 결과물을 제작해드립니다.</p>
+                <p className="text-slate-700">Analyze results and iterate with guidance.</p>
               </div>
             </Reveal>
 
             <Reveal from="up" delay={100}>
               <div className="flex items-center justify-center gap-3 mr-24">
-                <span className="text-2xl md:text-3xl text-blue-600">»» Step 2</span>
-                <span className="text-slate-500 mr-3 mt-1">방법은 간단하게, 결과물은 퀄리티 높게</span>
+                <span className="text-2xl md:text-3xl text-blue-600">Step 2</span>
+                <span className="text-slate-500 mr-3 mt-1">Refine outputs with templates and tips.</span>
               </div>
             </Reveal>
           </div>
@@ -649,14 +677,14 @@ function LandingSections() {
             <Reveal from="right" delay={120}>
               <div className="card p-6">
                 <div className="text-3xl font-black text-blue-500 mb-3">03</div>
-                <p className="text-slate-700">계정 연동 시 Instagram &amp; Thread 자동 업로드 및 댓글까지!</p>
+                <p className="text-slate-700">Schedule and auto-publish to Instagram &amp; Threads.</p>
               </div>
             </Reveal>
 
             <Reveal from="up" delay={200}>
               <div className="flex items-center justify-center gap-3 mr-24">
-                <span className="text-2xl md:text-3xl text-blue-600">»» Step 3</span>
-                <span className="text-slate-500">연동 설정 후 자동 운영을 시작해보세요.</span>
+                <span className="text-2xl md:text-3xl text-blue-600">Step 3</span>
+                <span className="text-slate-500">Automate your workflow and grow.</span>
               </div>
             </Reveal>
           </div>
@@ -666,19 +694,19 @@ function LandingSections() {
           <Reveal from="up">
             <div className="card h-48 md:h-56 p-4">
               <b className="text-blue-500">04</b>
-              <div className="text-slate-500 mt-2">업데이트 예정</div>
+              <div className="text-slate-500 mt-2">Coming soon</div>
             </div>
           </Reveal>
           <Reveal from="up" delay={80}>
             <div className="card h-48 md:h-56 p-4 mt-10">
               <b className="text-blue-500">05</b>
-              <div className="text-slate-500 mt-2">업데이트 예정</div>
+              <div className="text-slate-500 mt-2">Coming soon</div>
             </div>
           </Reveal>
           <Reveal from="up" delay={160}>
             <div className="card h-48 md:h-56 p-4 mt-20">
               <b className="text-blue-500">06</b>
-              <div className="text-slate-500 mt-2">업데이트 예정</div>
+              <div className="text-slate-500 mt-2">Coming soon</div>
             </div>
           </Reveal>
         </div>
@@ -686,3 +714,4 @@ function LandingSections() {
     </section>
   );
 }
+

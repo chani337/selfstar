@@ -1,0 +1,199 @@
+{
+  
+  "credit": {
+    "header": {
+      "title": "SelfStar.AI Pricing",
+      "subtitle": "Fair pricing for AI images and automation"
+    },
+    "plan": {
+      "free": {
+        "title": "Free",
+        "subtitle": "Personal / Trial",
+        "price": "$0 / mo",
+        "desc": "Try it lightly.",
+        "f1": "5 image generations / mo",
+        "f2": "Watermark included",
+        "f3": "Up to 2 personas"
+      },
+      "pro": {
+        "title": "Pro",
+        "subtitle": "For creators and small biz",
+        "price": "$14.9 / mo",
+        "desc": "Faster queue, no watermark, more features",
+        "f1": "Priority processing",
+        "f2": "Remove watermark",
+        "f3": "Up to 4 personas"
+      },
+      "business": {
+        "title": "Business",
+        "subtitle": "Team / Brand",
+        "price": "$29.9 / mo",
+        "desc": "Optimized for team operations and scale",
+        "f1": "3 seats included",
+        "f2": "Unlimited priority runs",
+        "f3": "Automation, Webhooks, SLA"
+      }
+    },
+    "button": {
+      "inUse": "In Use",
+      "switchFree": "Switch to Free",
+      "upgradePro": "Upgrade to Pro",
+      "contact": "Contact"
+    },
+    "checkout": {
+      "title": "Pro Checkout",
+      "desc": "Test-only checkout. No real payment is processed.",
+      "pay": "Pay",
+      "processing": "Processing…",
+      "successTitle": "Upgraded to Pro",
+      "offlineNote": "Dev mode: state changed locally without backend response."
+    },
+    "alert": {
+      "switchFree": {
+        "success": "Switched to the free plan.",
+        "fail": "Switch failed: {msg}"
+      }
+    }
+  },
+  
+  "i18n": {
+    "language": "Language",
+    "korean": "Korean",
+    "english": "English"
+  },
+  "header": {
+    "home": "Home",
+    "homeAria": "Go to SelfStar.AI home",
+    "settings": "Settings",
+    "auth": "Sign up / Login",
+    "logout": "Logout",
+    "chat": "Chat",
+    "mypage": "My Page",
+    "alerts": "Alerts"
+  },
+  "chatGate": {
+    "title": "Before You Start Chat",
+    "desc": "Please review the guide and notes. Continuing will start chat.",
+    "b1": "No harassment or prohibited content.",
+    "b2": "Do not enter personal information.",
+    "b3": "Some data may be used to improve quality.",
+    "confirm": "Agree and Start"
+  },
+  "carousel": {
+    "prev": "Previous",
+    "next": "Next",
+    "enlarge": "Enlarge",
+    "slideN": "Slide {n}",
+    "alt": { "input": "Chat input", "generating": "Generating", "result": "Result drag" },
+    "badge": { "input": "Prompt input", "generating": "Generating", "drag": "Drag to move" }
+  },
+  "alerts": {
+    "error": {
+      "auth": "Login required.",
+      "http": "Request failed: HTTP {code}",
+      "network": "Network error",
+      "draftGen": "Failed to generate draft reply.",
+      "replyPost": "Failed to post reply.",
+      "noBulkTarget": "No comments to process."
+    },
+    "bulk": { "desc": "Review replies generated for each comment." }
+  },
+  "home": {
+    "title": { "w1": " Welcome", "w2": "to", "w3": "SelfStar", "w4": "AI", "pre": "Welcome to" },
+    "brand": "SelfStar.AI",
+    "subtitle": { "signed": "Start chatting.", "anon": "Create a persona and get started." },
+    "cta": { "signed": "Start Chat", "anon": "Get Started" }
+  },
+  "footer": {
+    "brand": {
+      "desc1": "Create a virtual persona",
+      "desc2": "and grow as an influencer.",
+      "desc3": "We can help."
+    },
+    "columns": {
+      "product": {
+        "title": "Product",
+        "dashboard": "Dashboard",
+        "scheduler": "Scheduler",
+        "reports": "Reports/Analytics",
+        "credits": "Credits/Pricing"
+      },
+      "resources": {
+        "title": "Resources",
+        "guides": "Guides",
+        "tutorials": "Tutorials",
+        "notice": "Notice"
+      },
+      "company": {
+        "about": "About",
+        "jobs": "Jobs",
+        "contact": "Contact"
+      }
+    },
+    "links": {
+      "terms": "Terms",
+      "privacy": "Privacy",
+      "support": "Support"
+    },
+    "copyright": "All rights reserved."
+  },
+  "common": {
+    "close": "Close",
+    "cancel": "Cancel",
+    "confirm": "OK",
+    "refresh": "Refresh",
+    "loading": "Loading…",
+    "delete": "Delete"
+  },
+  "mypage": {
+    "tabs": { "photos": "Photos", "posts": "Posts", "drafts": "Drafts" },
+    "dashboard": "Dashboard",
+    "sections": { "integration": "Integrations", "todos": "Today's Tasks" },
+    "todos": { "add": "Add task", "new": "New task" },
+    "gallery": {
+      "count": "Gallery {n}",
+      "refresh": "Refresh",
+      "manage": "Manage photos",
+      "manageEnd": "Done",
+      "loading": "Loading…",
+      "error": "Failed to load gallery: {err}",
+      "emptyTitle": "No generated images yet",
+      "emptyAction": "Create"
+    },
+    "drafts": {
+      "loading": "Loading…",
+      "error": "Failed to load drafts: {err}",
+      "emptyTitle": "No drafts yet",
+      "emptyAction": "Create"
+    },
+    "posts": {
+      "count": "Instagram posts {n}",
+      "sync": "Sync",
+      "manage": "Manage posts",
+      "manageEnd": "Done",
+      "loading": "Loading…",
+      "error": "Failed to load posts: {err}",
+      "reauthHint": "Instagram link required or expired. Re-auth in Integration panel.",
+      "emptyTitle": "No linked Instagram posts",
+      "emptyAction": "Sync"
+    },
+    "link": {
+      "selectProfile": "Select a profile first.",
+      "expired": "Auth expired or missing. Click 'Re-auth' to link again.",
+      "pleaseLink": "Please link!",
+      "connected": "linked",
+      "status": { "connected": "Linked", "checking": "Checking…", "disconnected": "Not linked" },
+      "linkInstagram": "Link Instagram"
+    },
+    "alert": {
+      "selectProfileToLink": "Select a profile to link first.",
+      "selectProfile": "Select a profile first.",
+      "linked": "Persona and Instagram account linked.",
+      "linkFail": "Link failed: {msg}"
+    },
+    "galleryUi": {
+      "deletePhoto": "Delete photo",
+      "confirmDelete": "Delete this image?"
+    }
+  }
+}

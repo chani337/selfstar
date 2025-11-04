@@ -1,0 +1,123 @@
+{
+  "credit": {
+    "header": { "title": "SelfStar.AI 요금제", "subtitle": "AI 이미지 생성과 자동화를 합리적인 가격으로" },
+    "plan": {
+      "free": { "title": "무료", "subtitle": "개인/체험", "price": "월 0원", "desc": "가볍게 체험해보세요.", "f1": "월 5회 이미지 생성", "f2": "워터마크 포함", "f3": "최대 2개 페르소나" },
+      "pro": { "title": "프로", "subtitle": "크리에이터/소규모 팀", "price": "월 19,000원", "desc": "빠른 처리, 워터마크 제거, 더 많은 기능", "f1": "우선 처리", "f2": "워터마크 제거", "f3": "최대 4개 페르소나" },
+      "business": { "title": "비즈니스", "subtitle": "팀/브랜드", "price": "월 39,900원", "desc": "팀 운영과 규모에 최적화된 플랜", "f1": "3석 포함", "f2": "우선 실행 무제한", "f3": "자동화, 웹훅, SLA" }
+    },
+    "button": { "inUse": "이용 중", "switchFree": "무료로 전환", "upgradePro": "프로로 업그레이드", "contact": "문의하기" },
+    "checkout": { "title": "프로 결제", "desc": "테스트용 결제 모달입니다. 실제 결제는 수행되지 않습니다.", "pay": "결제하기", "processing": "처리 중…", "successTitle": "프로로 업그레이드되었습니다", "offlineNote": "개발 모드: 백엔드 응답 없이 로컬에서 상태만 변경했습니다." },
+    "alert": { "switchFree": { "success": "무료 요금제로 전환되었습니다.", "fail": "전환 실패: {msg}" } }
+  },
+  "common": { "close": "닫기", "cancel": "취소", "confirm": "확인", "refresh": "새로고침", "loading": "불러오는 중…", "delete": "삭제" },
+  "i18n": { "language": "언어", "korean": "한국어", "english": "English" },
+  "header": {
+    "home": "홈",
+    "homeAria": "SelfStar.AI 홈으로",
+    "settings": "설정",
+    "auth": "회원가입 / 로그인",
+    "logout": "로그아웃",
+    "chat": "채팅",
+    "mypage": "마이페이지",
+    "alerts": "알림"
+  },
+  "chatGate": {
+    "title": "채팅 시작 전 안내",
+    "desc": "가이드와 주의사항을 확인해 주세요. 계속하면 채팅이 시작됩니다.",
+    "b1": "타인 비방 및 금지 콘텐츠는 제한됩니다.",
+    "b2": "개인정보를 입력하지 마세요.",
+    "b3": "서비스 품질 향상을 위해 일부 데이터가 사용될 수 있습니다.",
+    "confirm": "동의하고 채팅 시작"
+  },
+  "carousel": {
+    "prev": "이전",
+    "next": "다음",
+    "enlarge": "크게 보기",
+    "slideN": "슬라이드 {n}",
+    "alt": { "input": "채팅 입력 화면", "generating": "생성 중 화면", "result": "결과 드래그 화면" },
+    "badge": { "input": "프롬프트 입력", "generating": "생성 중", "drag": "드래그하여 결과 이동" }
+  },
+  "alerts": {
+    "error": {
+      "auth": "로그인이 필요합니다.",
+      "http": "요청 실패: HTTP {code}",
+      "network": "네트워크 오류",
+      "draftGen": "자동 답글 초안 생성 중 오류가 발생했습니다.",
+      "replyPost": "답글 등록 중 오류가 발생했습니다.",
+      "noBulkTarget": "일괄 생성할 댓글이 없습니다."
+    },
+    "bulk": { "desc": "각 댓글에 생성된 답글을 확인하세요." }
+  },
+  "home": {
+    "title": { "w1": "에", "w2": "오신", "w3": "것을", "w4": "환영합니다.", "pre": "환영합니다" },
+    "brand": "SelfStar.AI",
+    "subtitle": { "signed": "채팅을 시작해보세요.", "anon": "인물을 생성해 활동을 시작해 보세요." },
+    "cta": { "signed": "채팅 시작", "anon": "시작하기" }
+  },
+  "footer": {
+    "brand": { "desc1": "SelfStar에서 가상의 인물을", "desc2": "제작하여 인플루언서로 활동해보세요.", "desc3": "저희가 도와드릴게요." },
+    "columns": {
+      "product": { "title": "제품", "dashboard": "대시보드", "scheduler": "예약 발행", "reports": "리포트/통계", "credits": "크레딧/요금제" },
+      "resources": { "title": "리소스", "guides": "가이드", "tutorials": "튜토리얼", "notice": "공지사항" },
+      "company": { "about": "소개", "jobs": "채용", "contact": "문의" }
+    },
+    "links": { "terms": "이용약관", "privacy": "개인정보처리방침", "support": "고객센터" },
+    "copyright": "All rights reserved."
+  },
+  "mypage": {
+    "tabs": { "photos": "사진", "posts": "게시글", "drafts": "임시저장" },
+    "dashboard": "대시보드",
+    "sections": { "integration": "SNS 연동", "todos": "오늘의 할 일" },
+    "todos": { "add": "할 일 추가", "new": "새 할 일" },
+    "gallery": {
+      "count": "갤러리 {n}장",
+      "refresh": "새로고침",
+      "manage": "사진 관리",
+      "manageEnd": "관리 종료",
+      "loading": "불러오는 중…",
+      "error": "갤러리를 불러오지 못했습니다: {err}",
+      "emptyTitle": "아직 생성된 이미지가 없어요",
+      "emptyAction": "새로 만들기",
+      "deletePhoto": "사진 삭제",
+      "confirmDelete": "이 이미지를 삭제할까요?"
+    },
+    "drafts": {
+      "title": "임시 저장",
+      "refresh": "새로고침",
+      "manage": "임시 저장 관리",
+      "manageEnd": "관리 종료",
+      "delete": "삭제",
+      "count": "임시 저장 {n}개",
+      "loading": "불러오는 중…",
+      "error": "임시저장 불러오지 못했습니다: {err}",
+      "emptyTitle": "아직 임시저장 항목이 없어요",
+      "emptyAction": "바로 만들기"
+    },
+    "posts": {
+      "count": "인스타 게시글 {n}개",
+      "sync": "동기화",
+      "manage": "게시글 관리",
+      "manageEnd": "관리 종료",
+      "loading": "불러오는 중…",
+      "error": "게시글을 불러오지 못했습니다: {err}",
+      "reauthHint": "인스타그램 연동이 필요하거나 인증이 만료되었습니다. 우측의 연동 관리에서 재인증해 주세요.",
+      "emptyTitle": "연동된 인스타 게시글이 없어요",
+      "emptyAction": "동기화"
+    },
+    "link": {
+      "selectProfile": "프로필을 먼저 선택하세요.",
+      "expired": "인증이 만료되었거나 권한이 없습니다. 아래 '다시 인증'을 눌러 재연동해 주세요.",
+      "pleaseLink": "연동해주세요!",
+      "connected": "연결됨",
+      "status": { "connected": "연동됨", "checking": "확인 중…", "disconnected": "미연동" },
+      "linkInstagram": "인스타 연동 하기"
+    },
+    "alert": {
+      "selectProfileToLink": "먼저 연동할 프로필을 선택하세요.",
+      "selectProfile": "먼저 프로필을 선택하세요.",
+      "linked": "이 페르소나와 인스타 계정이 연결되었습니다.",
+      "linkFail": "연결 실패: {msg}"
+    }
+  }
+}
