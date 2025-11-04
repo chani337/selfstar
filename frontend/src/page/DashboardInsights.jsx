@@ -29,6 +29,68 @@ export default function DashboardInsights() {
   const [mediaLoading, setMediaLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
+  // Mock 데이터 토글 (?mock=1)
+  const useMock = useMemo(() => {
+    try { const qs = new URLSearchParams(window.location.search); return qs.get('mock') === '1'; } catch { return false; }
+  }, []);
+
+  // 요청하신 값으로 임시 데이터 생성
+  const buildMock = () => {
+    const d = (s)=> new Date(s).toISOString().slice(0,10);
+    const d1 = d('2025-11-03');
+    const d2 = d('2025-11-04');
+    const d3 = d('2025-11-05');
+    const follower_count = [
+      { date: d1, value: 905 },
+      { date: d2, value: 913 },
+      { date: d3, value: 919 },
+    ];
+    const profile_views = [
+      { date: d1, value: 1600 },
+      { date: d2, value: 1900 },
+      { date: d3, value: 1500 },
+    ];
+    // 단순 가정: 노출(impressions)과 도달(reach)은 프로필 방문을 기준으로 비례 분배
+    const impressions = [
+      { date: d1, value: 4000 },
+      { date: d2, value: 4800 },
+      { date: d3, value: 3800 },
+    ];
+    const reach = [
+      { date: d1, value: 2200 },
+      { date: d2, value: 2700 },
+      { date: d3, value: 2100 },
+    ];
+    const followers_delta = [
+      { date: d2, value: 8 },
+      { date: d3, value: 6 },
+    ];
+    // 게시일 기준 좋아요 합계(approx): 총합 264로 표시되도록 설정
+    const approx_likes_by_post_day = [
+      { date: d1, value: 264 },
+      { date: d2, value: 0 },
+      { date: d3, value: 0 },
+    ];
+    const mockOverview = {
+      followers_count: 919,
+      today_followers_delta: 8,
+      series: {
+        follower_count,
+        profile_views,
+        impressions,
+        reach,
+        approx_likes_by_post_day,
+      },
+    };
+    // 스냅샷 · 좋아요 일별 증가: 11/03=250, 11/04=152
+    const likes_delta = [
+      { date: d1, value: 250 },
+      { date: d2, value: 152 },
+    ];
+    const mockDaily = { followers_delta, likes_delta };
+    return { mockOverview, mockDaily };
+  };
+
   // 프로필 선택 모달에서 선택되면 반영 (PersonaQuickPicker가 window 이벤트를 쏨)
   useEffect(()=>{
     const handler = (e)=>{
@@ -67,6 +129,16 @@ export default function DashboardInsights() {
     const load = async () => {
       if (!persona?.num) { setData(null); return; }
       setLoading(true); setError(null);
+      // mock 모드면 네트워크 호출 없이 즉시 표시
+      if (useMock) {
+        const { mockOverview, mockDaily } = buildMock();
+        setData(mockOverview);
+        setDaily(mockDaily);
+        setMediaItems([]);
+        setMediaError(null);
+        setLoading(false);
+        return;
+      }
       try {
         const res = await fetch(`${API_BASE}/api/instagram/insights/overview?persona_num=${persona.num}&days=30`, { credentials: 'include' });
         if (!res.ok) {
@@ -77,7 +149,7 @@ export default function DashboardInsights() {
         setData(j);
         // 일별 증가
         const d = await fetch(`${API_BASE}/api/instagram/insights/daily?persona_num=${persona.num}&days=30`, { credentials: 'include' });
-        if (d.ok) setDaily(await d.json()); else setDaily(null);
+        if (d.ok) setDaily(await d.json()); else if (useMock) { setDaily(buildMock().mockDaily); } else { setDaily(null); }
         // 게시글별 인사이트
         setMediaLoading(true); setMediaError(null);
         const m = await fetch(`${API_BASE}/api/instagram/insights/media_overview?persona_num=${persona.num}&limit=12&days=30`, { credentials: 'include' });
@@ -85,15 +157,24 @@ export default function DashboardInsights() {
           const mj = await m.json();
           setMediaItems(Array.isArray(mj?.items)? mj.items : []);
         } else {
-          setMediaItems([]);
-          setMediaError(`HTTP ${m.status}`);
+          if (useMock) { setMediaItems([]); setMediaError(null); }
+          else { setMediaItems([]); setMediaError(`HTTP ${m.status}`); }
         }
       } catch (e) {
-        setError(e?.message || '로드 실패');
-        setData(null);
-        setDaily(null);
-        setMediaItems([]);
-        setMediaError(e?.message || '로드 실패');
+        if (useMock) {
+          const { mockOverview, mockDaily } = buildMock();
+          setData(mockOverview);
+          setDaily(mockDaily);
+          setError(null);
+          setMediaItems([]);
+          setMediaError(null);
+        } else {
+          setError(e?.message || '로드 실패');
+          setData(null);
+          setDaily(null);
+          setMediaItems([]);
+          setMediaError(e?.message || '로드 실패');
+        }
       } finally { setLoading(false); }
     };
     await load();
@@ -186,6 +267,11 @@ export default function DashboardInsights() {
         </>
       ) : (
         <>
+          {useMock && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 text-amber-800 px-4 py-2 text-xs">
+              임시 데이터가 표시됩니다 · 팔로워 905→913→919 · 프로필 방문 총 5,000
+            </div>
+          )}
           <div className="grid md:grid-cols-3 gap-6">
             <InsightStat label="팔로워" value={fmtNum(data?.followers_count)} sub={todayTrendText(data) || trendText(data?.series?.follows, data?.series?.unfollows)} />
             <InsightStat label="도달(30일)" value={sumSeries(data?.series?.reach)} spark={data?.series?.reach} />

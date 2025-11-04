@@ -53,6 +53,8 @@ export default function MyPage() {
   const [draftsError, setDraftsError] = useState(null);
   const [manageDrafts, setManageDrafts] = useState(false);
   const [managePosts, setManagePosts] = useState(false);
+  // Draft auto-publish state
+  const [publishingDraftId, setPublishingDraftId] = useState(null);
   // Post preview & comment modal
   const [postModalOpen, setPostModalOpen] = useState(false);
   const [postModalItem, setPostModalItem] = useState(null);
@@ -117,7 +119,7 @@ export default function MyPage() {
     // 동시에 현재 사용자 크레딧 플랜 조회
     (async () => {
       try {
-        const r = await fetch(`${API_BASE}/auth/me`, { credentials: "include" });
+  const r = await fetch(`${API_BASE}/auth/me`, { credentials: "include" });
         if (!r.ok) return;
         const me = await r.json();
         if (!alive) return;
@@ -616,7 +618,96 @@ export default function MyPage() {
                 {!draftsLoading && !draftsError && Array.isArray(drafts) && drafts.length > 0 && (
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                     {drafts.map((d) => (
-                      <div key={d.id} className="group relative rounded-xl overflow-hidden border border-slate-200 bg-white/60">
+                      <button
+                        key={d.id}
+                        type="button"
+                        className="group relative rounded-xl overflow-hidden border border-slate-200 bg-white/60 text-left"
+                        onClick={async (e) => {
+                          e.preventDefault();
+                          if (manageDrafts) return; // 관리 모드에서는 클릭 액션 비활성화
+                          if (!activePersona?.num) { setSelectorOpen(true); return; }
+                          if (!igMapping?.ig_user_id) { setIntegrationsOpen(true); alert('인스타 계정 연동이 필요합니다. 연동을 완료한 뒤 다시 시도하세요.'); return; }
+                          const confirmPublish = window.confirm('이 임시저장 이미지를 자동 캡션과 함께 바로 인스타그램에 게시할까요?');
+                          if (!confirmPublish) return;
+                          setPublishingDraftId(d.id);
+                          try {
+                            // 1) 공개 URL 보장
+                            let imageUrl = d?.url || '';
+                            try {
+                              const ep = await fetch(`${API_BASE}/api/files/ensure_public`, {
+                                method: 'POST',
+                                credentials: 'include',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ image: imageUrl || d?.key || '', persona_num: activePersona.num })
+                              });
+                              const ej = await ep.json().catch(() => null);
+                              if (ep.ok && ej?.ok && ej?.url) {
+                                imageUrl = ej.url;
+                              }
+                            } catch (_) { /* fallback to original url */ }
+
+                            if (!imageUrl) { throw new Error('이미지 URL을 확인할 수 없습니다.'); }
+
+                            // 2) 캡션 자동 생성
+                            let caption = '';
+                            try {
+                              const cr = await fetch(`${API_BASE}/api/instagram/caption/draft`, {
+                                method: 'POST',
+                                credentials: 'include',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ persona_num: activePersona.num, image: imageUrl })
+                              });
+                              const cj = await cr.json().catch(() => null);
+                              if (!cr.ok) {
+                                const msg = (cj?.detail && (typeof cj.detail === 'string' ? cj.detail : (cj.detail?.error || cj.detail?.message))) || `HTTP ${cr.status}`;
+                                throw new Error(msg || '캡션 생성 실패');
+                              }
+                              caption = String(cj?.caption || '').trim();
+                            } catch (err) {
+                              throw new Error(`캡션 생성 오류: ${err?.message || err}`);
+                            }
+
+                            // 3) 인스타 게시
+                            const pr = await fetch(`${API_BASE}/api/instagram/publish`, {
+                              method: 'POST',
+                              credentials: 'include',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ persona_num: activePersona.num, image_url: imageUrl, caption })
+                            });
+                            const pj = await pr.json().catch(() => null);
+                            if (!pr.ok) {
+                              const dmsg = (pj?.detail && (typeof pj.detail === 'string' ? pj.detail : (pj.detail?.error || pj.detail?.message))) || `HTTP ${pr.status}`;
+                              if (String(dmsg).includes('persona_oauth_required')) {
+                                alert('인스타 연동/인증이 필요하거나 만료되었습니다. 연동을 다시 진행해 주세요.');
+                                setIntegrationsOpen(true);
+                              } else {
+                                alert(`업로드 실패: ${dmsg}`);
+                              }
+                              return;
+                            }
+                            alert('인스타그램에 게시했습니다. 게시글 목록을 새로고침합니다.');
+                            // 성공 시: Posts 탭으로 전환 후 동기화
+                            try {
+                              setTab('posts');
+                              setInstaLoading(true);
+                              await fetch(`${API_BASE}/api/instagram/posts/sync?persona_num=${activePersona.num}&limit=18&days=7`, { method: 'POST', credentials: 'include' });
+                              const r2 = await fetch(`${API_BASE}/api/instagram/posts?persona_num=${activePersona.num}&limit=18`, { credentials: 'include' });
+                              if (r2.ok) {
+                                const j2 = await r2.json();
+                                setInstaPosts(Array.isArray(j2?.items) ? j2.items : []);
+                              }
+                            } catch (e) {
+                              console.debug('[MyPage] post-sync after publish failed', e);
+                            } finally {
+                              setInstaLoading(false);
+                            }
+                          } catch (err) {
+                            alert(err?.message || String(err));
+                          } finally {
+                            setPublishingDraftId(null);
+                          }
+                        }}
+                      >
                         {d.url ? (
                           <img src={d.url} alt="draft" className="w-full h-36 object-cover" loading="lazy" />
                         ) : (
@@ -632,6 +723,7 @@ export default function MyPage() {
                             title="삭제"
                             onClick={async (e) => {
                               e.preventDefault();
+                              e.stopPropagation();
                               try {
                                 const r = await fetch(`${API_BASE}/api/chat/drafts/${d.id}`, { method: 'DELETE', credentials: 'include' });
                                 if (r.ok) {
@@ -641,7 +733,12 @@ export default function MyPage() {
                             }}
                           >{t('mypage.drafts.delete')}</button>
                         )}
-                      </div>
+                        {publishingDraftId === d.id && (
+                          <div className="absolute inset-0 grid place-items-center bg-black/40">
+                            <div className="text-white text-sm">업로드 중…</div>
+                          </div>
+                        )}
+                      </button>
                     ))}
                   </div>
                 )}
@@ -865,7 +962,7 @@ export default function MyPage() {
               <button className="btn" onClick={() => setShowCreditModal(false)}>닫기</button>
             </div>
             <div className="p-5">
-              <Credit />
+              <Credit variant="modal" />
             </div>
           </div>
         </div>

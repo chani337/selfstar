@@ -94,8 +94,10 @@ async def consume(request: Request, body: GrantBody):
 async def upgrade_plan(request: Request, body: UpgradeBody):
     """
     임시 업그레이드 엔드포인트: 결제 완료된 것으로 간주하고 플랜을 변경.
-    - 기본 정책: plan == 'pro'로 변경 허용
-    - 옵션: 환경변수 CREDITS_UPGRADE_GRANT_PRO 로 초기 크레딧 부여(기본 0)
+    - 기본 정책: 'pro' 또는 'business' 등으로 변경 허용
+    - 옵션: 환경변수
+        - CREDITS_UPGRADE_GRANT_PRO:    프로 업그레이드 시 초기 크레딧 부여(기본 0)
+        - CREDITS_UPGRADE_GRANT_BUSINESS: 비즈니스 업그레이드 시 초기 크레딧 부여(기본 0)
     """
     user_id = request.session.get("user_id")
     if not user_id:
@@ -119,11 +121,13 @@ async def upgrade_plan(request: Request, body: UpgradeBody):
 
     # 선택적으로 프로 업그레이드에 초기 크레딧 부여
     grant_on_upgrade = 0
-    if plan == "pro":
-        try:
+    try:
+        if plan == "pro":
             grant_on_upgrade = int(os.getenv("CREDITS_UPGRADE_GRANT_PRO", "0"))
-        except Exception:
-            grant_on_upgrade = 0
+        elif plan in ("business", "biz"):
+            grant_on_upgrade = int(os.getenv("CREDITS_UPGRADE_GRANT_BUSINESS", "0"))
+    except Exception:
+        grant_on_upgrade = 0
     if grant_on_upgrade > 0:
         try:
             await ensure_credit_tables()

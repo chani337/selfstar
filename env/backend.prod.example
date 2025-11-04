@@ -38,3 +38,13 @@ META_APP_SECRET=
 META_REDIRECT_URI=https://selfstar.duckdns.org/oauth/instagram/callback
 META_SCOPES=instagram_basic,instagram_content_publish,instagram_manage_comments,instagram_manage_insights,pages_show_list,pages_read_engagement,pages_manage_metadata,pages_manage_posts,business_management,public_profile
 META_WEBHOOK_VERIFY_TOKEN=
+
+# Auto-reply scheduler (Business account comment replies)
+# Enable/disable background loop
+# AUTO_REPLY_SCHEDULER_ENABLED=1
+# Interval between scans in seconds (e.g., 480 = 8 minutes)
+# AUTO_REPLY_INTERVAL_SECONDS=480
+# Limits per cycle (tune to control load)
+# AUTO_REPLY_MEDIA_LIMIT=3
+# AUTO_REPLY_COMMENTS_LIMIT=5
+# AUTO_REPLY_MAX_PER_PERSONA=5

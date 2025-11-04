@@ -20,6 +20,10 @@ export default function Alerts() {
   const [sending, setSending] = useState(null); // comment_id currently being processed
   const [draft, setDraft] = useState(null); // { persona_num, comment_id, reply, posting }
   const [bulk, setBulk] = useState(null); // { persona_num, entries:[{comment_id,text,media,reply,status,error}], posting }
+  // Auto image generation per-comment status map: { [commentId]: 'loading' | 'done' | 'failed' }
+  const [imgGenStatus, setImgGenStatus] = useState({});
+  // If AI service is unavailable (e.g., Docker AI stopped), disable auto-draft button gracefully
+  const [aiUnavailable, setAiUnavailable] = useState(false);
   const autoImageEnabled = (typeof import.meta !== 'undefined' && import.meta.env)
     ? ((import.meta.env.VITE_AUTO_IMAGE_COMMENTS ?? 'true').toString().toLowerCase() !== 'false')
     : true;
@@ -73,6 +77,12 @@ export default function Alerts() {
     if (!autoImageEnabled) return;
     const personas = Array.isArray(data?.personas) ? data.personas : [];
     const sent = autoImageSentRef.current;
+    const isGenDone = (cid) => {
+      try { return localStorage.getItem(`autoImgDone:${cid}`) === '1'; } catch { return false; }
+    };
+    const markGenDone = (cid) => {
+      try { localStorage.setItem(`autoImgDone:${cid}`, '1'); } catch {}
+    };
     const run = async () => {
       for (const p of personas) {
         const persona_num = p?.persona_num;
@@ -83,9 +93,16 @@ export default function Alerts() {
             const cid = c?.id;
             if (!cid || sent.has(cid)) continue;
             if (!c?.text || !looksLikeImageRequest(c.text)) continue;
+            // If previously generated (persisted), mark as done and skip re-trigger
+            if (isGenDone(cid)) {
+              sent.add(cid);
+              setImgGenStatus((prev) => ({ ...prev, [cid]: 'done' }));
+              continue;
+            }
             // fire-and-forget; 서버 ACK는 콘솔 로그로만 확인
             try {
               sent.add(cid);
+              setImgGenStatus((prev) => ({ ...prev, [cid]: 'loading' }));
               if (debugAutoImage) {
                 console.debug('[auto_image] trigger', { persona_num, comment_id: cid, text: c.text });
               }
@@ -105,13 +122,17 @@ export default function Alerts() {
                   let body = null;
                   try { body = await r.json(); } catch { body = await r.text(); }
                   if (debugAutoImage) console.warn('[auto_image] failed', r.status, body);
+                  setImgGenStatus((prev) => ({ ...prev, [cid]: 'failed' }));
                 } else {
                   if (debugAutoImage) console.debug('[auto_image] ok');
+                  setImgGenStatus((prev) => ({ ...prev, [cid]: 'done' }));
+                  markGenDone(cid);
                 }
               });
               // 성공/실패와 무관하게 즉시 UI를 갱신하지는 않음(주기적 새로고침)
             } catch (e) {
               if (debugAutoImage) console.warn('[auto_image] exception', e);
+              setImgGenStatus((prev) => ({ ...prev, [cid]: 'failed' }));
               // 예외는 디버그 환경에서만 콘솔로 노출
             }
           }
@@ -134,7 +155,13 @@ export default function Alerts() {
         body: JSON.stringify({ persona_num, text, post_img, post }),
       });
       if (r.status === 401) throw new Error('로그인이 필요합니다.');
-      if (!r.ok) throw new Error(`초안 생성 실패: HTTP ${r.status}`);
+      if (!r.ok) {
+        if (r.status === 502) {
+          setAiUnavailable(true);
+          throw new Error('AI 서비스가 오프라인입니다. 도커 AI 컨테이너를 실행해 주세요.');
+        }
+        throw new Error(`초안 생성 실패: HTTP ${r.status}`);
+      }
       const j = await r.json();
       const reply = (j?.reply ?? '').trim();
       if (!reply) throw new Error('빈 답변이 생성되었습니다.');
@@ -296,7 +323,7 @@ export default function Alerts() {
 
       <div className="grid gap-6 md:grid-cols-2">
         {data?.personas?.map((p) => (
-          <PersonaCard key={p.persona_num} persona={p} onAutoReply={handleAutoReply} onBulkDraft={handleBulkDraft} sending={sending} />
+          <PersonaCard key={p.persona_num} persona={p} onAutoReply={handleAutoReply} onBulkDraft={handleBulkDraft} sending={sending} imgGenStatus={imgGenStatus} aiUnavailable={aiUnavailable} />
         ))}
       </div>
 
@@ -362,7 +389,7 @@ export default function Alerts() {
   );
 }
 
-function PersonaCard({ persona, onAutoReply, onBulkDraft, sending }) {
+function PersonaCard({ persona, onAutoReply, onBulkDraft, sending, imgGenStatus, aiUnavailable }) {
   const { persona_name, persona_img, ig_username, items = [] } = persona;
   const persona_num = persona.persona_num;
 
@@ -395,7 +422,7 @@ function PersonaCard({ persona, onAutoReply, onBulkDraft, sending }) {
         ) : (
           <div className="space-y-5">
             {items.map((m) => (
-              <MediaBlock key={m.media_id} media={m} persona_num={persona_num} onAutoReply={onAutoReply} sending={sending} />
+              <MediaBlock key={m.media_id} media={m} persona_num={persona_num} onAutoReply={onAutoReply} sending={sending} imgGenStatus={imgGenStatus} aiUnavailable={aiUnavailable} />
             ))}
           </div>
         )}
@@ -404,9 +431,16 @@ function PersonaCard({ persona, onAutoReply, onBulkDraft, sending }) {
   );
 }
 
-function MediaBlock({ media, persona_num, onAutoReply, sending }) {
+function MediaBlock({ media, persona_num, onAutoReply, sending, imgGenStatus, aiUnavailable = false }) {
   const thumb = media.thumbnail_url || media.media_url;
   const comments = media.comments || [];
+  const isImageRequest = (t) => {
+    if (!t) return false;
+    const s = String(t).toLowerCase();
+    const kws = ['사진','이미지','그림','그려','만들','생성','렌더','image','picture','photo','render','generate'];
+    for (const k of kws) { if (s.includes(k.toLowerCase())) return true; }
+    return false;
+  };
   return (
     <div className="rounded-xl border bg-white/60">
       {/* 포스트 헤더: 캡션/타임스탬프/링크 */}
@@ -445,14 +479,23 @@ function MediaBlock({ media, persona_num, onAutoReply, sending }) {
               <div className="col-span-8 text-sm text-slate-700 wrap-break-word" title={c.text}>{c.text}</div>
               <div className="col-span-2 text-xs text-slate-500 text-right flex flex-col items-end gap-2">
                 <div>{formatTime(c.timestamp)}</div>
-                <button
-                  className="btn-soft-primary text-[11px] px-2.5 py-1.5 disabled:opacity-60 whitespace-nowrap"
-                  onClick={() => onAutoReply?.({ persona_num, comment_id: c.id, text: c.text, media })}
-                  disabled={sending === c.id}
-                  title="AI 기본 답변으로 자동 작성"
-                >
-                  {sending === c.id ? '작성 중…' : '자동 작성'}
-                </button>
+                <div className="flex items-center justify-end gap-2 w-full">
+                  {isImageRequest(c.text) && (
+                    imgGenStatus?.[c.id] === 'done' ? (
+                      <span className="inline-flex items-center text-[11px] px-2 py-1 rounded-full bg-blue-50 text-blue-600 border border-blue-200 whitespace-nowrap">사진 생성</span>
+                    ) : (
+                      <span className="inline-flex items-center text-[11px] px-2 py-1 rounded-full bg-slate-50 text-slate-500 border whitespace-nowrap">사진 생성 로딩</span>
+                    )
+                  )}
+                  <button
+                    className="btn-soft-primary text-[11px] px-2.5 py-1.5 disabled:opacity-60 whitespace-nowrap"
+                    onClick={() => onAutoReply?.({ persona_num, comment_id: c.id, text: c.text, media })}
+                    disabled={sending === c.id || aiUnavailable}
+                    title={aiUnavailable ? 'AI 서비스 오프라인' : 'AI 기본 답변으로 자동 작성'}
+                  >
+                    {sending === c.id ? '작성 중…' : '자동 작성'}
+                  </button>
+                </div>
               </div>
             </div>
           ))

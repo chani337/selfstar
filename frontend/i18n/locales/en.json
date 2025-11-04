@@ -2,43 +2,48 @@
   
   "credit": {
     "header": {
-      "title": "SelfStar.AI Pricing",
-      "subtitle": "Fair pricing for AI images and automation"
+      "title": "SelfStar.AI Credits · Pricing",
+      "subtitle": "Create as much as you need and scale with your growth"
     },
+    "badge": { "recommended": "Recommended" },
     "plan": {
       "free": {
         "title": "Free",
-        "subtitle": "Personal / Trial",
+        "subtitle": "Personal / Test",
         "price": "$0 / mo",
-        "desc": "Try it lightly.",
-        "f1": "5 image generations / mo",
+        "desc": "Basic features to start",
+        "f1": "5 images per day",
         "f2": "Watermark included",
-        "f3": "Up to 2 personas"
+        "f3": "Up to 2 personas",
+        "f4": "Basic templates, 5 scheduled posts / mo"
       },
       "pro": {
         "title": "Pro",
-        "subtitle": "For creators and small biz",
-        "price": "$14.9 / mo",
-        "desc": "Faster queue, no watermark, more features",
-        "f1": "Priority processing",
-        "f2": "Remove watermark",
-        "f3": "Up to 4 personas"
+        "subtitle": "Creators / Small businesses",
+        "price": "$12.5 / mo",
+        "desc": "Great value pro plan (VAT separate)",
+        "f1": "Unlimited image generation",
+        "f2": "No watermark",
+        "f3": "Up to 5 personas",
+        "f4": "Commercial license, brand kit",
+        "f5": "Priority support & unlimited scheduling"
       },
       "business": {
         "title": "Business",
         "subtitle": "Team / Brand",
         "price": "$29.9 / mo",
-        "desc": "Optimized for team operations and scale",
-        "f1": "3 seats included",
+        "desc": "Optimized for teams and scale",
+        "f1": "3 seats included (add more)",
         "f2": "Unlimited priority runs",
-        "f3": "Automation, Webhooks, SLA"
+        "f3": "Automation/Webhooks, Roles, SLA"
       }
     },
     "button": {
       "inUse": "In Use",
-      "switchFree": "Switch to Free",
+      "switchFree": "Start Free",
       "upgradePro": "Upgrade to Pro",
-      "contact": "Contact"
+      "upgradeBusiness": "Upgrade to Business",
+      "contact": "Contact Sales"
     },
     "checkout": {
       "title": "Pro Checkout",
@@ -48,6 +53,7 @@
       "successTitle": "Upgraded to Pro",
       "offlineNote": "Dev mode: state changed locally without backend response."
     },
+    "checkoutBiz": { "title": "Business Checkout", "successTitle": "Upgraded to Business" },
     "alert": {
       "switchFree": {
         "success": "Switched to the free plan.",

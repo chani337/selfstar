@@ -31,6 +31,7 @@ function IconTag({ className = "w-6 h-6" }) {
 }
 
 function PlanCard({ Icon, title, subtitle, price, desc, features = [], featured, buttonText, buttonPrimary, onClick }) {
+  const { t } = useI18n();
   const isPro = !!featured;
   const isBiz = String(title || "").toLowerCase().includes("business") || String(title || "").includes("비즈");
   const outer = "bg-white border text-slate-900 shadow-md rounded-3xl";
@@ -41,6 +42,12 @@ function PlanCard({ Icon, title, subtitle, price, desc, features = [], featured,
 
   return (
     <article className={`relative rounded-2xl overflow-hidden group ${finalOuter} h-full flex flex-col`}>
+      {featured && (
+        <div className="absolute top-3 left-3 z-10 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-100 text-sky-700 border border-sky-200 group-hover:bg-white/90 group-hover:text-sky-700">
+          <svg viewBox="0 0 20 20" width="14" height="14" fill="currentColor" className="opacity-80"><path d="M10 1l2.2 4.4 4.8.7-3.5 3.4.8 4.8L10 12.8 5.7 14.3l.8-4.8L3 6.1l4.8-.7L10 1z"/></svg>
+          <span>{t("credit.badge.recommended")}</span>
+        </div>
+      )}
       <div className="relative p-8 flex-1 flex flex-col">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-lg grid place-items-center bg-slate-100 text-sky-600 group-hover:bg-white/10 group-hover:text-white">
@@ -53,7 +60,7 @@ function PlanCard({ Icon, title, subtitle, price, desc, features = [], featured,
         </div>
         <div className="mt-4 rounded-xl px-4 py-4 flex items-baseline justify-between bg-white/10">
           <div className="text-3xl font-extrabold text-sky-600 group-hover:text-white">{finalPrice}</div>
-          <div className="text-right max-w-[40%] text-sm text-slate-500 group-hover:text-white/90 break-words">{desc}</div>
+          <div className="text-right max-w-[40%] text-sm text-slate-500 group-hover:text-white/90 wrap-break-word">{desc}</div>
         </div>
         <ul className="mt-5 grid gap-3">
           {features.map((f, i) => (
@@ -61,7 +68,7 @@ function PlanCard({ Icon, title, subtitle, price, desc, features = [], featured,
               <span className="bg-emerald-100 text-emerald-700 mt-1 w-7 h-7 rounded-full flex items-center justify-center group-hover:bg-white/20 group-hover:text-white">
                 <svg viewBox="0 0 20 20" className="w-3 h-3" fill="none"><path d="M4.5 10.5l3 3 8-8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </span>
-              <div className="text-sm text-slate-700 group-hover:text-white/95 break-words">{f}</div>
+              <div className="text-sm text-slate-700 group-hover:text-white/95 wrap-break-word">{f}</div>
             </li>
           ))}
         </ul>
@@ -71,9 +78,10 @@ function PlanCard({ Icon, title, subtitle, price, desc, features = [], featured,
   );
 }
 
-export default function CreditPlans() {
+export default function CreditPlans({ variant = "page" }) {
   const { t } = useI18n();
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [checkoutPlan, setCheckoutPlan] = useState(null); // 'pro' | 'business'
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -102,9 +110,10 @@ export default function CreditPlans() {
     return () => { alive = false; };
   }, []);
 
-  const openProCheckout = () => {
+  const openCheckout = (p) => {
     setError("");
     setSuccess(false);
+    setCheckoutPlan(p);
     setCheckoutOpen(true);
   };
 
@@ -116,6 +125,7 @@ export default function CreditPlans() {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       setPlan("standard");
       alert(t("credit.alert.switchFree.success"));
+      try { window.dispatchEvent(new CustomEvent('user-credit-changed', { detail: { plan: 'standard' } })); } catch {}
     } catch (e) {
       alert(t("credit.alert.switchFree.fail", { msg: e?.message || String(e || "") }));
     }
@@ -125,47 +135,66 @@ export default function CreditPlans() {
     setPaying(true);
     setError("");
     try {
+      const target = checkoutPlan || 'pro';
       const r = await fetch(`${API_BASE}/api/credits/upgrade`, {
-        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plan: "pro" })
+        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plan: target })
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       setSuccess(true);
-      setPlan("pro");
+      setPlan(target);
       setOfflineSuccess(false);
+      try { window.dispatchEvent(new CustomEvent('user-credit-changed', { detail: { plan: target } })); } catch {}
     } catch (e) {
       // Dev/offline: treat as success
       setSuccess(true);
-      setPlan("pro");
+      const target = checkoutPlan || 'pro';
+      setPlan(target);
       setOfflineSuccess(true);
+      try { window.dispatchEvent(new CustomEvent('user-credit-changed', { detail: { plan: (checkoutPlan || 'pro') } })); } catch {}
     } finally {
       setPaying(false);
     }
   };
 
+  // Helper to collect features f1..f8 if present, skip untranslated keys
+  const fx = (base) => {
+    const arr = [];
+    for (let i = 1; i <= 8; i++) {
+      const key = `${base}.f${i}`;
+      const v = t(key);
+      if (v && v !== key) arr.push(v);
+    }
+    return arr;
+  };
+
+  const outerPad = variant === 'page' ? 'pt-10 pb-28' : 'pt-2 pb-6';
   return (
-    <div className="pb-16">
+    <div className={outerPad}>
       <style>{`.success-check { width:80px;height:80px;border-radius:9999px;display:grid;place-items:center;background:radial-gradient(120% 120% at 30% 20%, #34d399 0%, #10b981 60%, #059669 100%);color:white;box-shadow:0 12px 30px rgba(16,185,129,.35), inset 0 0 30px rgba(255,255,255,.28); }`}</style>
+      <div className={`max-w-6xl xl:max-w-7xl mx-auto ${variant==='page' ? 'px-4 sm:px-6 lg:px-8' : 'px-4'}`}>
+        <header className="text-center mb-6">
+          <h1 className="text-4xl md:text-5xl font-black tracking-tight text-sky-700">{t("credit.header.title")}</h1>
+          <p className="text-sm text-slate-600 mt-2">{t("credit.header.subtitle")}</p>
+        </header>
 
-      <header className="text-center mb-6">
-        <h1 className="text-4xl md:text-5xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-sky-600 to-indigo-600">{t("credit.header.title")}</h1>
-        <p className="text-sm text-slate-600 mt-2">{t("credit.header.subtitle")}</p>
-      </header>
+        <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-10 items-start">
+          <PlanCard Icon={IconBubble} title={t("credit.plan.free.title")} subtitle={t("credit.plan.free.subtitle")} price={t("credit.plan.free.price")} desc={t("credit.plan.free.desc")} features={fx("credit.plan.free")} buttonText={plan === "standard" ? t("credit.button.inUse") : t("credit.button.switchFree")} onClick={plan === "standard" ? undefined : switchToFree} />
 
-      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 items-start">
-        <PlanCard Icon={IconBubble} title={t("credit.plan.free.title")} subtitle={t("credit.plan.free.subtitle")} price={t("credit.plan.free.price")} desc={t("credit.plan.free.desc")} features={[t("credit.plan.free.f1"), t("credit.plan.free.f2"), t("credit.plan.free.f3")]} buttonText={plan === "standard" ? t("credit.button.inUse") : t("credit.button.switchFree")} onClick={plan === "standard" ? undefined : switchToFree} />
+          <PlanCard Icon={IconSparkle} title={t("credit.plan.pro.title")} subtitle={t("credit.plan.pro.subtitle")} price={t("credit.plan.pro.price")} desc={t("credit.plan.pro.desc")} features={fx("credit.plan.pro")} featured buttonText={plan === "pro" ? t("credit.button.inUse") : t("credit.button.upgradePro")} buttonPrimary onClick={plan === "pro" ? undefined : () => openCheckout('pro')} />
 
-        <PlanCard Icon={IconSparkle} title={t("credit.plan.pro.title")} subtitle={t("credit.plan.pro.subtitle")} price={t("credit.plan.pro.price")} desc={t("credit.plan.pro.desc")} features={[t("credit.plan.pro.f1"), t("credit.plan.pro.f2"), t("credit.plan.pro.f3")]}
-          featured buttonText={plan === "pro" ? t("credit.button.inUse") : t("credit.button.upgradePro")} buttonPrimary onClick={plan === "pro" ? undefined : openProCheckout} />
+          <PlanCard Icon={IconTag} title={t("credit.plan.business.title")} subtitle={t("credit.plan.business.subtitle")} price={t("credit.plan.business.price")} desc={t("credit.plan.business.desc")} features={fx("credit.plan.business")} buttonText={plan === "business" ? t("credit.button.inUse") : t("credit.button.upgradeBusiness")} onClick={plan === "business" ? undefined : () => openCheckout('business')} />
+        </section>
+      </div>
 
-        <PlanCard Icon={IconTag} title={t("credit.plan.business.title")} subtitle={t("credit.plan.business.subtitle")} price={t("credit.plan.business.price")} desc={t("credit.plan.business.desc")} features={[t("credit.plan.business.f1"), t("credit.plan.business.f2"), t("credit.plan.business.f3")]}
-          buttonText={t("credit.button.contact")} />
-      </section>
+      {variant === 'page' && (
+        <div className="h-16 sm:h-20 md:h-28" aria-hidden="true" />
+      )}
 
       {checkoutOpen && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" role="dialog" aria-modal="true" onClick={() => setCheckoutOpen(false)}>
           <div className="w-[min(560px,96vw)] rounded-2xl border border-slate-200 bg-white shadow-[0_30px_70px_rgba(2,6,23,0.28)] overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="px-5 py-4 flex items-center justify-between border-b">
-              <div className="font-semibold">{t("credit.checkout.title")}</div>
+              <div className="font-semibold">{checkoutPlan === 'business' ? t("credit.checkoutBiz.title") : t("credit.checkout.title")}</div>
               <button className="btn" onClick={() => setCheckoutOpen(false)}>{t("common.close")}</button>
             </div>
             <div className="p-5 space-y-4">
@@ -185,7 +214,7 @@ export default function CreditPlans() {
                       <path d="M20 6L9 17l-5-5" />
                     </svg>
                   </div>
-                  <div className="mt-4 text-2xl font-extrabold text-sky-600">{t("credit.checkout.successTitle")}</div>
+                  <div className="mt-4 text-2xl font-extrabold text-sky-600">{checkoutPlan === 'business' ? t("credit.checkoutBiz.successTitle") : t("credit.checkout.successTitle")}</div>
                   {offlineSuccess && (
                     <div className="mt-2 text-[12px] text-amber-700 bg-amber-50 border border-amber-200 inline-block px-2 py-1 rounded">
                       {t("credit.checkout.offlineNote")}

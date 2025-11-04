@@ -5,10 +5,12 @@ import httpx
 from typing import Optional, Dict, Any, List
 import os
 import json
+import asyncio
 import aiomysql
 
 from app.api.core.mysql import get_mysql_pool
 from app.core.s3 import s3_enabled, presign_get_url, put_data_uri
+from app.api.models.users import find_user_by_id
 
 from .oauth_instagram import (
     GRAPH as IG_GRAPH,
@@ -416,6 +418,44 @@ def _normalize_persona_img(raw: str) -> str:
         return raw
 
 
+def _extract_mbti_from_params(pp_raw: Optional[str | Dict[str, Any]]) -> str:
+    """Extract MBTI-like personality code from persona_parameters JSON.
+
+    Priority:
+    - Explicit MBTI fields: mbti, MBTI, mbti_type, personality_mbti
+    - Fallback: personality/tone/style/voice if looks like MBTI (e.g., INFP)
+    - Instagram-nested personality/tone
+    """
+    try:
+        if isinstance(pp_raw, str):
+            try:
+                pp = json.loads(pp_raw)
+            except Exception:
+                pp = {}
+        else:
+            pp = pp_raw or {}
+        if not isinstance(pp, dict):
+            return ""
+        for key in ("mbti", "MBTI", "mbti_type", "personality_mbti"):
+            val = pp.get(key)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+        import re as _re
+        for key in ("personality", "tone", "style", "voice"):
+            val = pp.get(key)
+            if isinstance(val, str) and val.strip():
+                s = val.strip().upper()
+                if _re.match(r"^[E|I][N|S][F|T][P|J]$", s):
+                    return s
+        igp = (pp.get("instagram") or {}) if isinstance(pp, dict) else {}
+        val = igp.get("personality") or igp.get("tone")
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    except Exception:
+        pass
+    return ""
+
+
 @router.post("/comments/auto_image")
 async def auto_image_for_comment(request: Request, body: AutoImageBody):
     """댓글 텍스트를 보고 이미지 요청이면 자동으로 생성하여 갤러리에 저장합니다.
@@ -469,7 +509,8 @@ async def auto_image_for_comment(request: Request, body: AutoImageBody):
 
     persona_img_norm = _normalize_persona_img(str(persona_img))
 
-    ai_url = (os.getenv("AI_SERVICE_URL") or "http://localhost:8600").rstrip("/")
+    # Prefer internal Docker service name by default; allow override via AI_SERVICE_URL
+    ai_url = (os.getenv("AI_SERVICE_URL") or "http://ai:8600").rstrip("/")
     payload = {
         "user_text": body.text,
         "persona_img": persona_img_norm,
@@ -543,7 +584,9 @@ async def auto_image_for_comment(request: Request, body: AutoImageBody):
         pass
 
     try:
-        if (os.getenv("AUTO_IMAGE_ACK_SEEN", "1").strip().lower() in ("1", "true", "yes")):
+        # Only ACK-hide the original comment after image creation if explicitly enabled.
+        # Default is disabled so comments remain visible until a reply is actually posted.
+        if (os.getenv("AUTO_IMAGE_ACK_SEEN", "0").strip().lower() in ("1", "true", "yes")):
             pool = await get_mysql_pool()
             async with pool.acquire() as conn:
                 async with conn.cursor() as cur:
@@ -565,10 +608,151 @@ async def auto_image_for_comment(request: Request, body: AutoImageBody):
     except Exception:
         pass
 
+    # Optional: If user's credit plan is Business, auto-generate caption and publish immediately
+    auto_published = False
+    auto_caption: Optional[str] = None
+    publish_result: Optional[Dict[str, Any]] = None
+    caption_error: Optional[Any] = None
+    publish_error: Optional[Any] = None
+
+    try:
+        user = await find_user_by_id(int(uid))
+        plan = (user or {}).get("user_credit")
+        plan_norm = (str(plan).strip().lower() if plan else "")
+        if plan_norm in ("business", "biz"):
+            # 1) Generate caption via AI (reuse personality from persona_parameters)
+            personality = _extract_mbti_from_params(persona_params_json)
+            ai_url = (os.getenv("AI_SERVICE_URL") or "http://ai:8600").rstrip("/")
+            cap_payload = {"image": url, "personality": personality or "", "tone": None}
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    cr = await client.post(f"{ai_url}/caption/generate", json=cap_payload)
+                if cr.status_code == 200:
+                    cj = cr.json() or {}
+                    auto_caption = (cj.get("caption") or "").strip() or None
+                else:
+                    try:
+                        caption_error = cr.json()
+                    except Exception:
+                        caption_error = cr.text
+            except Exception as e:
+                caption_error = f"ai_delegate_error:{e}"
+
+            # 2) Publish to Instagram if persona is linked and token exists
+            try:
+                mapping = await _get_persona_instagram_mapping(int(uid), int(persona_db_id))
+                token = await _get_persona_token(int(uid), int(persona_db_id))
+                if not mapping or not mapping.get("ig_user_id"):
+                    publish_error = "persona_instagram_not_linked"
+                elif not token:
+                    publish_error = "persona_oauth_required"
+                else:
+                    ig_user_id = mapping["ig_user_id"]
+                    # Create media container
+                    async with httpx.AsyncClient(timeout=60) as client:
+                        create = await client.post(
+                            f"{IG_GRAPH}/{ig_user_id}/media",
+                            data={
+                                "image_url": url,
+                                "caption": auto_caption or "",
+                                "access_token": token,
+                            },
+                        )
+                    if create.status_code != 200:
+                        publish_error = {"status": create.status_code, "body": create.text}
+                    else:
+                        creation_id = (create.json() or {}).get("id")
+                        if not creation_id:
+                            publish_error = "creation_id_missing"
+                        else:
+                            # Wait briefly for container readiness
+                            try:
+                                async with httpx.AsyncClient(timeout=30) as client:
+                                    finished = False
+                                    for _ in range(20):
+                                        gr = await client.get(
+                                            f"{IG_GRAPH}/{creation_id}",
+                                            params={"access_token": token, "fields": "status_code"},
+                                        )
+                                        if gr.status_code == 200:
+                                            st = (gr.json() or {}).get("status_code")
+                                            if st == "FINISHED":
+                                                finished = True
+                                                break
+                                            if st == "ERROR":
+                                                break
+                                        await asyncio.sleep(1.0)
+                            except Exception:
+                                pass
+
+                            # Publish (with one retry if readiness issue)
+                            async with httpx.AsyncClient(timeout=60) as client:
+                                async def _do_publish():
+                                    return await client.post(
+                                        f"{IG_GRAPH}/{ig_user_id}/media_publish",
+                                        data={"creation_id": creation_id, "access_token": token},
+                                    )
+
+                                pub = await _do_publish()
+                                if pub.status_code != 200:
+                                    try:
+                                        j = pub.json() or {}
+                                        err = (j.get("error") or {})
+                                        if err.get("code") == 9007 or err.get("error_subcode") == 2207027:
+                                            await asyncio.sleep(2.0)
+                                            pub2 = await _do_publish()
+                                            if pub2.status_code == 200:
+                                                publish_result = pub2.json()
+                                                auto_published = True
+                                            else:
+                                                publish_error = {"status": pub2.status_code, "body": pub2.text}
+                                        else:
+                                            publish_error = {"status": pub.status_code, "body": pub.text}
+                                    except Exception:
+                                        publish_error = {"status": pub.status_code, "body": pub.text}
+                                else:
+                                    publish_result = pub.json()
+                                    auto_published = True
+
+            except Exception as e:
+                publish_error = f"publish_exception:{e}"
+
+            # ACK-hide on successful publish regardless of env flag (best-effort)
+            if auto_published:
+                try:
+                    pool = await get_mysql_pool()
+                    async with pool.acquire() as conn:
+                        async with conn.cursor() as cur:
+                            try:
+                                await cur.execute(
+                                    """
+                                    INSERT INTO ss_instagram_event_seen (external_id, user_id, user_persona_num)
+                                    VALUES (%s,%s,%s)
+                                    ON DUPLICATE KEY UPDATE updated_at=CURRENT_TIMESTAMP
+                                    """,
+                                    (str(body.comment_id), int(uid), int(persona_db_id)),
+                                )
+                                try:
+                                    await conn.commit()
+                                except Exception:
+                                    pass
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+    except Exception:
+        # ignore auto-publish path errors; base flow already succeeded
+        pass
+
     return {
         "ok": True,
         "stored": {"key": key, "url": url, "id": chat_id},
         "prompt": ai_json.get("prompt"),
+        "auto_published": auto_published,
+        "auto_caption": auto_caption,
+        "publish_result": publish_result,
+        "caption_error": caption_error,
+        "publish_error": publish_error,
     }
 
 

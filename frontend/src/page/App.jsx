@@ -20,6 +20,7 @@ import DashboardPostInsights from "./DashboardPostInsights.jsx";
 import PostInsightDetail from "./PostInsightDetail.jsx";
 import ProfileSelect from "./ProfileSelect.jsx";
 import Credit from "./Credit.jsx";
+import MobilePreview from "./MobilePreview.jsx";
 
 const base = "px-3 py-1.5 rounded-full transition";
 const active = "bg-blue-600 text-white shadow";
@@ -50,7 +51,7 @@ function useAuth() {
     try {
       setLoading(true);
   // GET /auth/me: fetch current authenticated user (session-based)
-      const res = await fetch(`${API_BASE}/auth/me`, {
+  const res = await fetch(`${API_BASE}/auth/me`, {
         method: "GET",
         credentials: "include",
         headers: { Accept: "application/json" },
@@ -75,7 +76,7 @@ function useAuth() {
   const logout = useCallback(async () => {
     try {
   // POST /auth/logout: logout (invalidate session)
-      const res = await fetch(`${API_BASE}/auth/logout`, { method: "POST", credentials: "include" });
+  const res = await fetch(`${API_BASE}/auth/logout`, { method: "POST", credentials: "include" });
   if (res.ok || res.status === 204) { setUser(null); setError(null); }
   else { setError(t('alerts.error.http', { code: res.status })); }
     } catch (e) {
@@ -229,14 +230,48 @@ export default function App() {
   const { t } = useI18n();
   const location = useLocation();
   const { user, logout } = useAuth();
-  const isEmbedParam = new URLSearchParams(location.search).get("embed") === "1";
+  const qs0 = new URLSearchParams(location.search);
+  const isEmbedParam = qs0.get("embed") === "1"; // explicit chrome-hide embed
+  const isMobileInnerFrame = qs0.get("mframe") === "1"; // mobile preview inner iframe
   const isFramed = typeof window !== "undefined" && window.parent !== window;
-  const isEmbed = isEmbedParam || isFramed;
+  // Treat inner mobile frame as NOT embedded (show chrome), but still consider other embeds
+  const isEmbed = isEmbedParam || (isFramed && !isMobileInnerFrame);
+  const isMobilePreview = new URLSearchParams(location.search).get("mobile") === "1";
   // Router navigate util
   const navigate = useNavigate();
+  // Mobile sizing params available app-wide
+  const __mp = new URLSearchParams(location.search);
+  const mobileWidth = isMobilePreview ? (parseInt(__mp.get("mw") || "560", 10) || 560) : undefined;
+  const mobileMinH = isMobilePreview ? (parseInt(__mp.get("mh") || "883", 10) || 883) : undefined;
+
+  // Helper: navigate to home respecting app/web mode
+  const navigateToHome = useCallback(() => {
+    const sp = new URLSearchParams(location.search || "");
+    const keepMobile = sp.get("mobile") === "1" || sp.get("mframe") === "1";
+    if (sp.get("mframe") === "1") {
+      // inside inner frame: keep frame flags
+      const q = new URLSearchParams();
+      if (keepMobile) {
+        q.set("mobile", "1");
+        q.set("mframe", "1");
+        if (sp.get("mw")) q.set("mw", sp.get("mw"));
+        if (sp.get("mh")) q.set("mh", sp.get("mh"));
+      }
+      navigate({ pathname: "/", search: q.toString() ? `?${q.toString()}` : "" });
+      return;
+    }
+    const q = new URLSearchParams();
+    if (keepMobile) {
+      q.set("mobile", "1");
+      if (sp.get("mw")) q.set("mw", sp.get("mw"));
+      if (sp.get("mh")) q.set("mh", sp.get("mh"));
+    }
+    navigate({ pathname: "/", search: q.toString() ? `?${q.toString()}` : "" });
+  }, [location.search, navigate]);
 
 
   const [showGate, setShowGate] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [showImgcreateModal, setShowImgcreateModal] = useState(false);
 
   const [imgModalSize, setImgModalSize] = useState({ w: 1200, h: 0 });
@@ -250,10 +285,10 @@ export default function App() {
     setShowProfileModal(false);
     try {
       if (location.pathname === "/chat") {
-        navigate("/");
+        navigateToHome();
       }
     } catch {}
-  }, [location.pathname, navigate]);
+  }, [location.pathname, navigateToHome]);
 
   // Open image-create modal when receiving window event
   useEffect(() => {
@@ -268,6 +303,25 @@ export default function App() {
     const onMsg = (e) => {
       const d = e?.data;
       if (!d || !d.type) return;
+      if (d.type === "exit-mobile-preview") {
+        // Remove mobile flags and optionally sync to provided path
+        try {
+          const u = new URL(d.path || (location.pathname + location.search), window.location.origin);
+          const p = new URLSearchParams(u.search || "");
+          p.delete("mobile"); p.delete("mw"); p.delete("mh"); p.delete("mframe");
+          navigate({ pathname: u.pathname, search: p.toString() ? `?${p.toString()}` : "" }, { replace: true });
+        } catch {}
+        return;
+      }
+      if (d.type === "enter-mobile-preview") {
+        try {
+          const u = new URL(d.path || (location.pathname + location.search), window.location.origin);
+          const p = new URLSearchParams(u.search || "");
+          p.set("mobile", "1");
+          navigate({ pathname: u.pathname, search: `?${p.toString()}` }, { replace: true });
+        } catch {}
+        return;
+      }
       if (d.type === "imgcreate-size") {
         // Skip dynamic sizing in this embed; keep fixed safe size
         return;
@@ -322,18 +376,56 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, isEmbed]);
 
-  return (
-    <div className="min-h-screen flex flex-col bg-[linear-gradient(180deg,#f8fbff_0%,#ffffff_40%,#f7f7fb_100%)] text-slate-900">
+  const Shell = (
+    <div className={`min-h-screen flex flex-col bg-[linear-gradient(180deg,#f8fbff_0%,#ffffff_40%,#f7f7fb_100%)] text-slate-900 ${isMobilePreview ? 'mobile-emulate' : ''}`}>
+      {/* Force-mobile overrides when ?mobile=1 on wide screens */}
+      {(!isEmbed && isMobilePreview) && (
+        <style>{`
+          /* Utility toggles for header overrides */
+          .mobile-force-show{ display:inline-flex !important; }
+          .mobile-force-flex{ display:flex !important; }
+          .mobile-force-hidden{ display:none !important; }
+
+          /* Broad neutralization of md: responsive upgrades so mobile variants remain */
+          .mobile-emulate .md\:hidden{ display: initial !important; }
+          .mobile-emulate .md\:block{ display: initial !important; }
+          .mobile-emulate .md\:inline{ display: initial !important; }
+          .mobile-emulate .md\:inline-block{ display: initial !important; }
+          .mobile-emulate .md\:flex{ display: initial !important; }
+          .mobile-emulate .md\:grid{ display: initial !important; }
+
+          /* Collapse any md: multi-column grids into one column */
+          .mobile-emulate [class*="md:grid-cols-"]{ grid-template-columns: repeat(1, minmax(0, 1fr)) !important; }
+
+          /* Reset md: gaps/space-x (best-effort) */
+          .mobile-emulate [class*="md:gap-"],
+          .mobile-emulate [class*="md:space-x-"],
+          .mobile-emulate [class*="md:space-y-"]{ gap: inherit !important; }
+        `}</style>
+      )}
       {/* Header */}
       {!isEmbed && (
       <header className="sticky top-0 z-40 bg-white/80 backdrop-blur border-b">
         <div className="mx-auto max-w-6xl px-6 h-16 flex items-center justify-between">
-          <div className="text-2xl font-extrabold select-none tracking-tight">
-            <span className="text-yellow-400">-</span>
-            <Link to="/" className="text-blue-600">SelfStar.AI</Link>
-            <span className="text-yellow-400">-</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-label="Open menu"
+              aria-expanded={mobileNavOpen}
+              className={`md:hidden inline-flex items-center justify-center w-9 h-9 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 ${isMobilePreview ? 'mobile-force-show' : ''}`}
+              onClick={() => setMobileNavOpen(true)}
+            >
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h18M3 12h18M3 18h18" />
+              </svg>
+            </button>
+            <div className="text-2xl font-extrabold select-none tracking-tight">
+              <span className="text-yellow-400">-</span>
+              <Link to="/" className="text-blue-600">SelfStar.AI</Link>
+              <span className="text-yellow-400">-</span>
+            </div>
           </div>
-          <nav className="hidden md:flex items-center gap-5 md:gap-7 text-sm font-semibold ml-36">
+          <nav className={`hidden md:flex items-center gap-5 md:gap-7 text-sm font-semibold ml-36 ${isMobilePreview ? 'mobile-force-hidden' : ''}`}>
             <NavLink to="/" end className={({ isActive }) => `${base} ${isActive ? active : idle}`}>{t('header.home')}</NavLink>
             <NavLink
               to="/chat"
@@ -371,6 +463,100 @@ export default function App() {
   </header>
   )}
 
+      {/* Mobile nav drawer */}
+      {!isEmbed && mobileNavOpen && (
+        <div
+          className="fixed inset-0 z-1200"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setMobileNavOpen(false)}
+        >
+          <div className="absolute inset-0 bg-black/40" />
+          {isMobilePreview ? (
+            <div className="absolute inset-y-0 left-1/2 -translate-x-1/2" style={{ width: mobileWidth || 560 }}>
+              <aside
+                className="absolute inset-y-0 left-0 bg-white border-r shadow-xl p-4 flex flex-col"
+                style={{ width: Math.min(320, (mobileWidth || 560)) }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-lg font-extrabold text-blue-600">SelfStar.AI</div>
+                  <button
+                    aria-label={t('common.close')}
+                    className="inline-flex items-center justify-center w-8 h-8 rounded-md border bg-white"
+                    onClick={() => setMobileNavOpen(false)}
+                  >
+                    ×
+                  </button>
+                </div>
+                <nav className="mt-2 grid gap-2 text-[15px]">
+                  <NavLink to="/" end className={({ isActive }) => `${isActive ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'} rounded-lg px-3 py-2`}
+                    onClick={() => setMobileNavOpen(false)}>{t('header.home')}</NavLink>
+                  <NavLink to="/chat" className={({ isActive }) => `${isActive ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'} rounded-lg px-3 py-2`}
+                    onClick={(e) => { if (user) { e.preventDefault(); setMobileNavOpen(false); setShowGate(true); } else { setMobileNavOpen(false); } }}>{t('header.chat')}</NavLink>
+                  <NavLink to="/mypage" className={({ isActive }) => `${isActive ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'} rounded-lg px-3 py-2`}
+                    onClick={() => setMobileNavOpen(false)}>{t('header.mypage')}</NavLink>
+                  <NavLink to="/alerts" className={({ isActive }) => `${isActive ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'} rounded-lg px-3 py-2`}
+                    onClick={() => setMobileNavOpen(false)}>{t('header.alerts')}</NavLink>
+                  <NavLink to="/credits" className={({ isActive }) => `${isActive ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'} rounded-lg px-3 py-2`}
+                    onClick={() => setMobileNavOpen(false)}>크레딧/요금제</NavLink>
+                </nav>
+                <div className="mt-auto pt-3 border-t">
+                  {user ? (
+                    <button className="w-full h-10 rounded-lg border bg-white hover:bg-slate-50 text-slate-700" onClick={() => { setMobileNavOpen(false); logout(); }}>
+                      {t('header.logout')}
+                    </button>
+                  ) : (
+                    <Link to="/signup" className="block text-center w-full h-10 leading-10 rounded-lg bg-blue-600 text-white font-bold shadow hover:bg-blue-700" onClick={() => setMobileNavOpen(false)}>
+                      {t('header.auth')}
+                    </Link>
+                  )}
+                </div>
+              </aside>
+            </div>
+          ) : (
+            <aside
+              className="absolute inset-y-0 left-0 w-[min(82vw,320px)] bg-white border-r shadow-xl p-4 flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-lg font-extrabold text-blue-600">SelfStar.AI</div>
+                <button
+                  aria-label={t('common.close')}
+                  className="inline-flex items-center justify-center w-8 h-8 rounded-md border bg-white"
+                  onClick={() => setMobileNavOpen(false)}
+                >
+                  ×
+                </button>
+              </div>
+              <nav className="mt-2 grid gap-2 text-[15px]">
+                <NavLink to="/" end className={({ isActive }) => `${isActive ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'} rounded-lg px-3 py-2`}
+                  onClick={() => setMobileNavOpen(false)}>{t('header.home')}</NavLink>
+                <NavLink to="/chat" className={({ isActive }) => `${isActive ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'} rounded-lg px-3 py-2`}
+                  onClick={(e) => { if (user) { e.preventDefault(); setMobileNavOpen(false); setShowGate(true); } else { setMobileNavOpen(false); } }}>{t('header.chat')}</NavLink>
+                <NavLink to="/mypage" className={({ isActive }) => `${isActive ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'} rounded-lg px-3 py-2`}
+                  onClick={() => setMobileNavOpen(false)}>{t('header.mypage')}</NavLink>
+                <NavLink to="/alerts" className={({ isActive }) => `${isActive ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'} rounded-lg px-3 py-2`}
+                  onClick={() => setMobileNavOpen(false)}>{t('header.alerts')}</NavLink>
+                <NavLink to="/credits" className={({ isActive }) => `${isActive ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'} rounded-lg px-3 py-2`}
+                  onClick={() => setMobileNavOpen(false)}>크레딧/요금제</NavLink>
+              </nav>
+              <div className="mt-auto pt-3 border-t">
+                {user ? (
+                  <button className="w-full h-10 rounded-lg border bg-white hover:bg-slate-50 text-slate-700" onClick={() => { setMobileNavOpen(false); logout(); }}>
+                    {t('header.logout')}
+                  </button>
+                ) : (
+                  <Link to="/signup" className="block text-center w-full h-10 leading-10 rounded-lg bg-blue-600 text-white font-bold shadow hover:bg-blue-700" onClick={() => setMobileNavOpen(false)}>
+                    {t('header.auth')}
+                  </Link>
+                )}
+              </div>
+            </aside>
+          )}
+        </div>
+      )}
+
       {/* Routes */}
   <main className={isEmbed ? "" : "flex-1"}>
         <Routes>
@@ -397,6 +583,7 @@ export default function App() {
           />
           <Route path="/alerts" element={<Alerts />} />
           <Route path="/credits" element={<Credit />} />
+          <Route path="/preview/mobile" element={<MobilePreview />} />
         </Routes>
       </main>
 
@@ -405,7 +592,7 @@ export default function App() {
         <ChatGateModal
           onCancel={() => {
             setShowGate(false);
-            try { navigate('/'); } catch {}
+            try { navigateToHome(); } catch {}
           }}
           onConfirm={() => {
             setShowGate(false);
@@ -441,7 +628,7 @@ export default function App() {
               onClick={() => {
                 // Close and navigate home
                 setShowImgcreateModal(false);
-                try { navigate("/"); } catch {}
+                try { navigateToHome(); } catch {}
               }}
               style={{ position: "absolute", top: 10, right: 12, width: 36, height: 36, borderRadius: 999, border: "1px solid #e2e8f0", background: "#fff", boxShadow: "0 4px 10px rgba(2,6,23,.08)", cursor: "pointer", fontSize: 18, fontWeight: 800, color: "#334155", zIndex: 2 }}
             >
@@ -456,7 +643,9 @@ export default function App() {
         </div>
       )}
 
-  {!isEmbed && location.pathname !== "/chat" && <Footer />}
+  {!isEmbed && (location.pathname !== "/chat" || isMobilePreview) && (
+    <Footer forceMobile={new URLSearchParams(location.search).get("mobile") === "1"} />
+  )}
 
   {/* Profile select modal */}
       {!isEmbed && showProfileModal && (
@@ -528,7 +717,7 @@ export default function App() {
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-[1100] flex items-center justify-center bg-[rgba(15,23,42,0.45)] p-4"
+          className="fixed inset-0 z-1100 flex items-center justify-center bg-[rgba(15,23,42,0.45)] p-4"
           onClick={() => setShowManageProfiles(false)}
         >
           <div
@@ -537,7 +726,8 @@ export default function App() {
           >
             <ManageProfiles
               embedded
-              onClose={() => { setShowManageProfiles(false); navigate('/'); }}
+              onClose={() => { setShowManageProfiles(false); navigateToHome(); }}
+              
               onRequestCreateNew={() => {
                 setShowManageProfiles(false);
                 setShowImgcreateModal(true);
@@ -548,6 +738,37 @@ export default function App() {
       )}
     </div>
   );
+
+  if (isMobilePreview && !isMobileInnerFrame) {
+    // Emulate devtools mobile: render the app itself inside a centered iframe
+    // with fixed mobile viewport width; inside the iframe we set embed=1 so
+    // header/footer/shell from parent do not duplicate.
+    const deviceW = mobileWidth || 560; // default width
+    const deviceH = mobileMinH || 883; // default height (for initial viewport)
+  const params = new URLSearchParams(location.search || "");
+  // load inner as mobile frame (prevent recursion, show chrome)
+  params.set("mobile", "1");
+  params.set("mframe", "1");
+  // persist sizing so inner can anchor drawer/layout widths correctly
+  if (!params.get("mw")) params.set("mw", String(deviceW));
+  if (!params.get("mh")) params.set("mh", String(deviceH));
+  // ensure no explicit embed=1 that hides chrome
+  params.delete("embed");
+  const src = `${location.pathname}${params.toString() ? `?${params.toString()}` : ""}`;
+    return (
+      <div className="min-h-dvh bg-white">
+        <div className="mx-auto" style={{ width: deviceW }}>
+          <iframe
+            title="App mobile emulation"
+            src={src}
+            style={{ width: deviceW, height: "100dvh", minHeight: deviceH, border: 0, display: 'block' }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return Shell;
 }
 
 /* ========================= Private ========================= */

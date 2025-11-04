@@ -1,15 +1,49 @@
 import React from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useI18n } from "../i18n/index.js";
 
-export default function Footer() {
+export default function Footer({ forceMobile = false }) {
   const year = new Date().getFullYear();
   const { lang, setLang, t } = useI18n();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const params = new URLSearchParams(location.search || "");
+  const mobileParam = params.get("mobile") === "1";
+  const isPreviewRoute = location.pathname.startsWith("/preview/mobile");
+  const mobileMode = forceMobile || mobileParam || isPreviewRoute;
+  const inMobileInnerFrame = new URLSearchParams(location.search || "").get("mframe") === "1";
+
+  const setMobileMode = (on) => {
+    // If currently on preview route, exit to the carried path first
+    if (isPreviewRoute) {
+      const p = new URLSearchParams(location.search || "");
+      const raw = p.get("path") || "/";
+      navigate(raw);
+      return;
+    }
+    // If inside inner mobile frame (iFrame), ask parent to toggle instead
+    if (inMobileInnerFrame) {
+      try {
+        window.parent?.postMessage({ type: on ? 'enter-mobile-preview' : 'exit-mobile-preview', path: location.pathname + (location.search || '') }, '*');
+        return;
+      } catch {}
+    }
+    const p = new URLSearchParams(location.search || "");
+    if (on) p.set("mobile", "1"); else p.delete("mobile");
+    navigate({ pathname: location.pathname, search: p.toString() ? `?${p.toString()}` : "" }, { replace: true });
+  };
+
+  // When app mobile mode is on, force bottom row to a single aligned row
+  const bottomRowClass = mobileMode
+    ? "flex flex-row flex-wrap items-center justify-between gap-3"
+    : "flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between";
 
   return (
     <footer className="border-t bg-white/80 backdrop-blur">
       <div className="mx-auto max-w-6xl px-6 py-10">
         {/* 상단: 브랜드 + 링크 묶음 */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
+  <div className={mobileMode ? "grid grid-cols-1 gap-6" : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10"}>
           {/* 브랜드 */}
           <div className="space-y-3">
             <div className="text-xl font-bold tracking-tight">
@@ -41,10 +75,10 @@ export default function Footer() {
           <div>
             <div className="text-sm font-semibold text-slate-900">{t('footer.columns.product.title')}</div>
             <ul className="mt-3 space-y-2 text-sm text-slate-600">
-              <li><a href="#" className="hover:text-slate-900">{t('footer.columns.product.dashboard')}</a></li>
+              <li><Link to="/dashboard" className="hover:text-slate-900">{t('footer.columns.product.dashboard')}</Link></li>
               <li><a href="#" className="hover:text-slate-900">{t('footer.columns.product.scheduler')}</a></li>
               <li><a href="#" className="hover:text-slate-900">{t('footer.columns.product.reports')}</a></li>
-              <li><a href="#" className="hover:text-slate-900">{t('footer.columns.product.credits')}</a></li>
+              <li><Link to="/credits" className="hover:text-slate-900">{t('footer.columns.product.credits')}</Link></li>
             </ul>
           </div>
 
@@ -69,8 +103,8 @@ export default function Footer() {
         {/* 구분선 */}
         <div className="my-8 border-t border-slate-200" />
 
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          {/* 언어 선택 */}
+  <div className={bottomRowClass}>
+          {/* 언어 + 보기 모드 선택 */}
           <div className="flex items-center gap-3">
             <label htmlFor="lang" className="text-sm text-slate-600">{t('i18n.language')}</label>
             <select
@@ -82,6 +116,31 @@ export default function Footer() {
               <option value="ko">{t('i18n.korean')}</option>
               <option value="en">{t('i18n.english')}</option>
             </select>
+
+            {/* 보기 모드: 웹 / 앱(모바일) */}
+            <div className="ml-2 inline-flex rounded-xl border border-slate-300 overflow-hidden">
+              <button
+                type="button"
+                className={`h-9 px-3 text-sm ${!mobileMode ? 'bg-white text-slate-700' : 'bg-slate-50 text-slate-500'} hover:bg-white`}
+                onClick={() => setMobileMode(false)}
+                title="웹 레이아웃"
+              >웹</button>
+              <button
+                type="button"
+                className={`h-9 px-3 text-sm ${mobileMode ? 'bg-blue-600 text-white' : 'bg-white text-slate-700'} hover:bg-slate-50`}
+                onClick={() => setMobileMode(true)}
+                title="앱(모바일) 레이아웃"
+              >앱</button>
+            </div>
+
+            {/* 전체 모바일 미리보기 (iframe) */}
+            <Link
+              to="/preview/mobile"
+              className="ml-2 h-9 px-3 inline-flex items-center rounded-xl border border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100 text-sm font-semibold"
+              title="모바일 전체 미리보기"
+            >
+              모바일 전체 미리보기
+            </Link>
           </div>
 
           {/* 정책 링크 */}

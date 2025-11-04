@@ -1,13 +1,42 @@
 {
   "credit": {
-    "header": { "title": "SelfStar.AI 요금제", "subtitle": "AI 이미지 생성과 자동화를 합리적인 가격으로" },
+    "header": { "title": "SelfStar.AI 크레딧 · 요금제", "subtitle": "필요한 만큼 생성하고, 성장 단계에 맞춰 확장하세요." },
+    "badge": { "recommended": "추천" },
     "plan": {
-      "free": { "title": "무료", "subtitle": "개인/체험", "price": "월 0원", "desc": "가볍게 체험해보세요.", "f1": "월 5회 이미지 생성", "f2": "워터마크 포함", "f3": "최대 2개 페르소나" },
-      "pro": { "title": "프로", "subtitle": "크리에이터/소규모 팀", "price": "월 19,000원", "desc": "빠른 처리, 워터마크 제거, 더 많은 기능", "f1": "우선 처리", "f2": "워터마크 제거", "f3": "최대 4개 페르소나" },
-      "business": { "title": "비즈니스", "subtitle": "팀/브랜드", "price": "월 39,900원", "desc": "팀 운영과 규모에 최적화된 플랜", "f1": "3석 포함", "f2": "우선 실행 무제한", "f3": "자동화, 웹훅, SLA" }
+      "free": {
+        "title": "무료",
+        "subtitle": "개인/테스트용",
+        "price": "₩0 /월",
+        "desc": "시작에 적합한 기본 기능",
+        "f1": "하루 5장 이미지 생성",
+        "f2": "워터마크 포함",
+        "f3": "페르소나 최대 2개",
+        "f4": "기본 템플릿, 예약 포스팅 5회/월"
+      },
+      "pro": {
+        "title": "프로",
+        "subtitle": "크리에이터/소상공인",
+        "price": "₩15,900 /월",
+        "desc": "가성비 뛰어난 프로 플랜 · 부가세 별도",
+        "f1": "이미지 무제한 생성",
+        "f2": "워터마크 제거",
+        "f3": "페르소나 최대 5개",
+        "f4": "상업 라이선스, 브랜드 키트",
+        "f5": "우선 지원 & 예약 포스팅 무제한"
+      },
+      "business": {
+        "title": "비즈니스",
+        "subtitle": "팀/브랜드 운영",
+        "price": "₩39,000 /월",
+        "desc": "팀 단위 운영에 최적화된 플랜",
+        "f1": "팀 좌석 3개 포함(추가 가능)",
+        "f2": "우선 실행 무제한",
+        "f3": "자동화/웹훅, 권한, SLA"
+      }
     },
-    "button": { "inUse": "이용 중", "switchFree": "무료로 전환", "upgradePro": "프로로 업그레이드", "contact": "문의하기" },
-    "checkout": { "title": "프로 결제", "desc": "테스트용 결제 모달입니다. 실제 결제는 수행되지 않습니다.", "pay": "결제하기", "processing": "처리 중…", "successTitle": "프로로 업그레이드되었습니다", "offlineNote": "개발 모드: 백엔드 응답 없이 로컬에서 상태만 변경했습니다." },
+  "button": { "inUse": "이용 중", "switchFree": "무료로 시작", "upgradePro": "프로로 업그레이드", "upgradeBusiness": "비즈니스로 업그레이드", "contact": "상담 요청" },
+  "checkout": { "title": "프로 결제", "desc": "테스트용 결제 모달입니다. 실제 결제는 수행되지 않습니다.", "pay": "결제하기", "processing": "처리 중…", "successTitle": "프로로 업그레이드되었습니다", "offlineNote": "개발 모드: 백엔드 응답 없이 로컬에서 상태만 변경했습니다." },
+  "checkoutBiz": { "title": "비즈니스 결제", "successTitle": "비즈니스로 업그레이드되었습니다" },
     "alert": { "switchFree": { "success": "무료 요금제로 전환되었습니다.", "fail": "전환 실패: {msg}" } }
   },
   "common": { "close": "닫기", "cancel": "취소", "confirm": "확인", "refresh": "새로고침", "loading": "불러오는 중…", "delete": "삭제", "comingSoon": "준비 중" },

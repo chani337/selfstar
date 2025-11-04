@@ -18,6 +18,8 @@ from app.core.logging import get_logger
 from app.schemas.health import HealthResponse
 from urllib.parse import urlparse
 import asyncio
+import httpx
+import aiomysql
 
 # .env 파일 로드 순서 (컨테이너/로컬 모두에서 동작)
 # - 앱 디렉터리: /app/app
@@ -200,10 +202,314 @@ async def _daily_snapshot_loop():
         await asyncio.sleep(60 * 60 * 24)
 
 
-@app.on_event("startup")
-async def _start_background_tasks():
+# ===== Background: Auto-reply scheduler (every ~5 minutes) =====
+async def _auto_reply_scheduler_loop():
+    """Every few minutes, for Business users' linked personas:
+    - Fetch recent media and comments
+    - Filter out already ACK-ed comments
+    - Generate AI replies and post to Graph
+    - ACK each processed comment
+
+    Env toggles:
+    - AUTO_REPLY_SCHEDULER_ENABLED (1/0; default 1)
+    - AUTO_REPLY_INTERVAL_SECONDS (default 300)
+    - AUTO_REPLY_MEDIA_LIMIT (default 3)
+    - AUTO_REPLY_COMMENTS_LIMIT (default 5)
+    - AUTO_REPLY_MAX_PER_PERSONA (default 5 per cycle)
+    """
+    # Lazy imports to avoid circulars
+    from app.api.core.mysql import get_mysql_pool
+    from app.api.routes.oauth_instagram import GRAPH as IG_GRAPH, _get_persona_token
+    from app.api.routes.instagram_comments import _fetch_recent_media_and_comments
+
+    ai_url = (os.getenv("AI_SERVICE_URL") or "http://ai:8600").rstrip("/")
+    enabled = (os.getenv("AUTO_REPLY_SCHEDULER_ENABLED", "1").strip().lower() in ("1", "true", "yes"))
+    interval = int(os.getenv("AUTO_REPLY_INTERVAL_SECONDS", "300") or 300)
+    media_limit = int(os.getenv("AUTO_REPLY_MEDIA_LIMIT", "3") or 3)
+    comments_limit = int(os.getenv("AUTO_REPLY_COMMENTS_LIMIT", "5") or 5)
+    max_per_persona = int(os.getenv("AUTO_REPLY_MAX_PER_PERSONA", "5") or 5)
+
+    sched_log = get_logger("auto_reply_scheduler")
+    if not enabled:
+        sched_log.info("Auto-reply scheduler disabled by env. Not starting loop.")
+        return
+
+    while True:
+        try:
+            pool = await get_mysql_pool()
+            personas: list[dict] = []
+            # Discover business users' IG-linked personas which have persona-level tokens
+            async with pool.acquire() as conn:
+                async with conn.cursor(aiomysql.DictCursor) as cur:
+                    try:
+                        await cur.execute(
+                            """
+                            SELECT p.user_id, p.user_persona_num AS persona_num,
+                                   p.ig_user_id, p.persona_img, p.persona_parameters
+                            FROM ss_persona p
+                            JOIN ss_user u ON u.user_id = p.user_id
+                            JOIN ss_instagram_connector_persona t
+                              ON t.user_id = p.user_id AND t.user_persona_num = p.user_persona_num
+                            WHERE p.ig_user_id IS NOT NULL
+                              AND LOWER(u.user_credit) IN ('business', 'biz')
+                            LIMIT 200
+                            """
+                        )
+                        personas = await cur.fetchall() or []
+                    except Exception as e:
+                        sched_log.warning(f"persona discovery failed: {e}")
+                        personas = []
+
+            if not personas:
+                await asyncio.sleep(interval)
+                continue
+
+            async with httpx.AsyncClient(timeout=30) as client:
+                for p in personas:
+                    try:
+                        uid = int(p.get("user_id"))
+                        persona_num = int(p.get("persona_num"))
+                        token = await _get_persona_token(uid, persona_num)
+                        ig_user_id = p.get("ig_user_id")
+                        if not (token and ig_user_id):
+                            continue
+
+                        # Fetch recent media & comments
+                        media_items, _dbg = await _fetch_recent_media_and_comments(
+                            client,
+                            str(ig_user_id),
+                            str(token),
+                            media_limit=media_limit,
+                            comments_limit=comments_limit,
+                            return_debug=False,
+                        )
+                        try:
+                            sched_log.info(f"auto-reply: persona uid={uid} num={persona_num} media={len(media_items)}")
+                        except Exception:
+                            pass
+
+                        # Gather unseen top-level comment ids and needed context
+                        comment_tasks: list[dict] = []
+                        all_comment_ids: list[str] = []
+                        for m in media_items:
+                            for c in (m.get("comments") or []):
+                                cid = c.get("id")
+                                text = c.get("text")
+                                if isinstance(cid, str) and text and text.strip():
+                                    all_comment_ids.append(cid)
+                        if not all_comment_ids:
+                            try:
+                                sched_log.info(f"auto-reply: no comments found uid={uid} num={persona_num}")
+                            except Exception:
+                                pass
+                            continue
+
+                        # Filter seen comments
+                        seen_ids: set[str] = set()
+                        async with (await get_mysql_pool()).acquire() as conn:
+                            async with conn.cursor(aiomysql.DictCursor) as cur:
+                                try:
+                                    chunks = [all_comment_ids[i:i+100] for i in range(0, len(all_comment_ids), 100)]
+                                    for ch in chunks:
+                                        ph = ",".join(["%s"] * len(ch))
+                                        await cur.execute(
+                                            f"""
+                                            SELECT external_id FROM ss_instagram_event_seen
+                                            WHERE external_id IN ({ph})
+                                            """,
+                                            ch,
+                                        )
+                                        for r in (await cur.fetchall()) or []:
+                                            sid = r.get("external_id")
+                                            if isinstance(sid, str):
+                                                seen_ids.add(sid)
+                                except Exception:
+                                    seen_ids = set()
+
+                        # Build tasks capped per persona
+                        for m in media_items:
+                            post_img = m.get("media_url") or m.get("thumbnail_url")
+                            caption = m.get("caption")
+                            for c in (m.get("comments") or []):
+                                cid = c.get("id")
+                                if not cid or cid in seen_ids:
+                                    continue
+                                text = (c.get("text") or "").strip()
+                                if not text:
+                                    continue
+                                comment_tasks.append({
+                                    "comment_id": cid,
+                                    "text": text,
+                                    "post_img": post_img,
+                                    "post": caption,
+                                })
+                                if len(comment_tasks) >= max_per_persona:
+                                    break
+                            if len(comment_tasks) >= max_per_persona:
+                                break
+
+                        if not comment_tasks:
+                            try:
+                                sched_log.info(f"auto-reply: no unseen comments uid={uid} num={persona_num}")
+                            except Exception:
+                                pass
+                            continue
+
+                        # Extract persona personality and image
+                        personality = ""
+                        persona_img = p.get("persona_img")
+                        try:
+                            raw = p.get("persona_parameters")
+                            import json as _json
+                            pp = _json.loads(raw) if isinstance(raw, str) else (raw or {})
+                            if isinstance(pp, dict):
+                                for key in ("personality", "tone", "style", "voice"):
+                                    val = pp.get(key)
+                                    if isinstance(val, str) and val.strip():
+                                        personality = val.strip()
+                                        break
+                                if not personality:
+                                    igp = pp.get("instagram") or {}
+                                    if isinstance(igp, dict):
+                                        val = igp.get("personality") or igp.get("tone")
+                                        if isinstance(val, str) and val.strip():
+                                            personality = val.strip()
+                        except Exception:
+                            pass
+
+                        # Normalize persona_img for AI if needed
+                        def _norm_img(raw_url: str | None) -> str | None:
+                            if not raw_url:
+                                return None
+                            s = str(raw_url)
+                            try:
+                                from app.core.s3 import s3_enabled, presign_get_url
+                                if s.startswith("data:"):
+                                    return s
+                                if s.startswith("/"):
+                                    base = (os.getenv("BACKEND_INTERNAL_URL") or "http://backend:8000").rstrip("/")
+                                    return f"{base}{s}"
+                                if s.lower().startswith("http://localhost") or s.lower().startswith("http://127.0.0.1"):
+                                    from urllib.parse import urlparse, urlunparse
+                                    purl = urlparse(s)
+                                    return urlunparse(purl._replace(netloc="backend:8000"))
+                                if s3_enabled() and not s.lower().startswith("http"):
+                                    return presign_get_url(s)
+                                return s
+                            except Exception:
+                                return s
+
+                        persona_img_norm = _norm_img(persona_img)
+
+                        # Execute replies sequentially to keep load modest
+                        posted_count = 0
+                        for task in comment_tasks:
+                            try:
+                                # 1) AI generate reply
+                                payload = {
+                                    "post_img": task["post_img"],
+                                    "post": task["post"],
+                                    "personality": personality or "",
+                                    "text": task["text"],
+                                    "persona_img": persona_img_norm,
+                                }
+                                ar = await client.post(f"{ai_url}/comment/reply", json=payload)
+                                if ar.status_code != 200:
+                                    try:
+                                        sched_log.warning(f"auto-reply: AI failed status={ar.status_code} uid={uid} num={persona_num}")
+                                    except Exception:
+                                        pass
+                                    continue
+                                reply = (ar.json() or {}).get("reply") or ""
+                                reply = reply.strip()
+                                if not reply:
+                                    try:
+                                        sched_log.info(f"auto-reply: AI empty reply uid={uid} num={persona_num}")
+                                    except Exception:
+                                        pass
+                                    continue
+
+                                # 2) Post to Graph
+                                gr = await client.post(
+                                    f"{IG_GRAPH}/{task['comment_id']}/replies",
+                                    data={"message": reply, "access_token": token},
+                                )
+                                if gr.status_code != 200:
+                                    try:
+                                        jb = gr.json() if gr.headers.get("content-type","" ).startswith("application/json") else {"text": gr.text}
+                                    except Exception:
+                                        jb = {"text": gr.text}
+                                    try:
+                                        sched_log.warning(f"auto-reply: Graph reply failed status={gr.status_code} uid={uid} num={persona_num} detail={jb}")
+                                    except Exception:
+                                        pass
+                                    continue
+
+                                # 3) ACK comment id
+                                try:
+                                    async with (await get_mysql_pool()).acquire() as conn:
+                                        async with conn.cursor() as cur:
+                                            await cur.execute(
+                                                """
+                                                INSERT INTO ss_instagram_event_seen (external_id, user_id, user_persona_num)
+                                                VALUES (%s,%s,%s)
+                                                ON DUPLICATE KEY UPDATE updated_at=CURRENT_TIMESTAMP
+                                                """,
+                                                (str(task["comment_id"]), uid, persona_num),
+                                            )
+                                            try:
+                                                await conn.commit()
+                                            except Exception:
+                                                pass
+                                except Exception:
+                                    pass
+                                try:
+                                    posted_count += 1
+                                except Exception:
+                                    pass
+                            except Exception:
+                                # Continue other comments
+                                continue
+                        try:
+                            sched_log.info(f"auto-reply: posted={posted_count} uid={uid} num={persona_num}")
+                        except Exception:
+                            pass
+                    except Exception:
+                        # Continue other personas
+                        continue
+        except Exception as e:
+            try:
+                sched_log.warning(f"auto-reply scheduler iteration failed: {e}")
+            except Exception:
+                pass
+        finally:
+            await asyncio.sleep(max(60, interval))
+
+
+async def _delayed_start_background_tasks():
+    """Start background loops after a tiny delay so startup fully settles.
+    This avoids rare race conditions where tasks get cancelled during ASGI lifespan.
+    """
+    try:
+        await asyncio.sleep(1.0)
+    except Exception:
+        pass
     # fire-and-forget daily loop
     try:
         asyncio.create_task(_daily_snapshot_loop())
+    except Exception:
+        pass
+    # fire-and-forget auto-reply loop
+    try:
+        asyncio.create_task(_auto_reply_scheduler_loop())
+    except Exception:
+        pass
+
+
+@app.on_event("startup")
+async def _start_background_tasks():
+    # Start loops slightly delayed to avoid cancellation during startup
+    try:
+        asyncio.create_task(_delayed_start_background_tasks())
     except Exception:
         pass

@@ -64,6 +64,8 @@ export default function Chat() {
   const [caption, setCaption] = useState("");
   const [captionLoading, setCaptionLoading] = useState(false);
   const [captionError, setCaptionError] = useState("");
+  // Mobile: section toggle (chat | preview)
+  const [mobileSection, setMobileSection] = useState("chat");
   // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadState, setUploadState] = useState({ step: "idle", message: "", error: "", canConnect: false });
@@ -512,9 +514,22 @@ export default function Chat() {
   }
 
   return (
-    <div className="px-4 py-3 grid grid-cols-12 gap-4 h-[calc(100vh-4rem)] min-h-0">
+    <div className="px-4 pt-5 pb-3 grid grid-cols-12 gap-4 min-h-[calc(100dvh-4rem)]">
+      {/* Mobile section switcher (always visible on small screens) */}
+  <div className="xl:hidden col-span-12 mt-1">
+        <div className="grid grid-cols-2 rounded-full border bg-white overflow-hidden mb-2">
+          <button
+            className={`py-2 text-sm font-semibold ${mobileSection==='chat' ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-50'}`}
+            onClick={() => setMobileSection('chat')}
+          >채팅</button>
+          <button
+            className={`py-2 text-sm font-semibold ${mobileSection==='preview' ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-50'}`}
+            onClick={() => setMobileSection('preview')}
+          >프리뷰</button>
+        </div>
+      </div>
       {/* Center: chat */}
-      <main className="col-span-12 xl:col-span-8 rounded-xl border bg-white/80 backdrop-blur flex flex-col min-h-0">
+      <main className={`col-span-12 xl:col-span-8 rounded-xl border bg-white/80 backdrop-blur flex flex-col min-h-0 ${mobileSection==='preview' ? 'hidden xl:flex' : 'flex'}`}> 
         {/* Header */}
   <div className="px-4 h-12 border-b flex items-center gap-3">
           <img src={current.avatar} alt="avatar" className="size-8 rounded-full" />
@@ -526,6 +541,7 @@ export default function Chat() {
             프로필 선택
           </Button>
         </div>
+
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 min-h-0">
@@ -571,7 +587,7 @@ export default function Chat() {
                       />
                       {/* hover glass overlay */}
                       <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/10 via-transparent to-transparent" />
+                        <div className="absolute inset-0 bg-linear-to-t from-black/10 via-transparent to-transparent" />
                       </div>
                     </div>
                     <div className="text-xs text-neutral-500">더블클릭하거나 드래그해서 우측 프리뷰에 담을 수 있어요.</div>
@@ -585,7 +601,7 @@ export default function Chat() {
                           style={{ height: 360, aspectRatio: "4 / 5" }}
                         >
                           {/* soft background accents */}
-                          <div className="absolute inset-0 bg-gradient-to-br from-neutral-100 via-neutral-200/50 to-neutral-100" />
+                          <div className="absolute inset-0 bg-linear-to-br from-neutral-100 via-neutral-200/50 to-neutral-100" />
                           <div className="absolute inset-0 grid place-items-center p-3">
                             <HandwriteLoader />
                           </div>
@@ -651,7 +667,7 @@ export default function Chat() {
       </main>
 
       {/* Right column */}
-      <aside className="col-span-12 xl:col-span-4 rounded-xl border bg-white/70 overflow-y-auto min-h-0 flex flex-col">
+  <aside className={`col-span-12 xl:col-span-4 rounded-xl border bg-white/70 overflow-y-auto min-h-0 flex flex-col ${mobileSection==='preview' ? 'flex' : 'hidden'} xl:flex`}>
         <div className="px-4 h-12 border-b flex items-center">
           <div className="flex items-center gap-2 font-semibold"><MessageSquare className="size-4" /> 게시 도우미</div>
         </div>
@@ -819,7 +835,7 @@ export default function Chat() {
       </aside>
     {/* Upload modal */}
     {showUploadModal && (
-      <div className="fixed inset-0 z-[100] grid place-items-center bg-black/40 p-4" role="dialog" aria-modal="true">
+  <div className="fixed inset-0 z-100 grid place-items-center bg-black/40 p-4" role="dialog" aria-modal="true">
         <div className="w-[520px] max-w-[92vw] rounded-2xl bg-white shadow-xl border">
           <div className="p-5 border-b">
             <div className="text-lg font-semibold">인스타 업로드</div>
@@ -848,7 +864,7 @@ export default function Chat() {
               <div className="text-sm text-emerald-700">{uploadState.message}</div>
             )}
             {uploadState.step === "error" && (
-              <div className="text-sm text-rose-600 whitespace-pre-wrap break-words">{uploadState.error || "오류가 발생했습니다."}</div>
+              <div className="text-sm text-rose-600 whitespace-pre-wrap wrap-break-word">{uploadState.error || "오류가 발생했습니다."}</div>
             )}
           </div>
           <div className="p-4 border-t flex items-center justify-end gap-2">
