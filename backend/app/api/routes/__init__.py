@@ -91,3 +91,10 @@ try:
     router.include_router(chat_router)
 except Exception:
     pass
+
+# Credits routes (balance/ledger/grant)
+try:
+    from .credits import router as credits_router
+    router.include_router(credits_router)
+except Exception:
+    pass

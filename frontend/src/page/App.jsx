@@ -37,12 +37,12 @@ import Step3Carousel from "@/components/Step3Carousel.jsx";
 
 // Backend API base comes from .env (VITE_API_BASE); empty string in dev uses Vite proxy
 
-/* =============== ?몄뀡 ?ъ슜????=============== */
 function useAuth() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const focusCooldownRef = useRef(0);
+  const { t } = useI18n();
 
   const refresh = useCallback(async () => {
     const ctrl = new AbortController();
@@ -57,8 +57,8 @@ function useAuth() {
         cache: "no-store",
         signal: ctrl.signal,
       });
-      if (res.status === 401) { setUser(null); setError(null); return; }
-      if (!res.ok) { setUser(null); setError(`?쒕쾭 ?ㅻ쪟: HTTP ${res.status}`); return; }
+  if (res.status === 401) { setUser(null); setError(null); return; }
+  if (!res.ok) { setUser(null); setError(t('alerts.error.http', { code: res.status })); return; }
       const data = await res.json();
       setUser(data.authenticated ? data.user : null);
       setError(null);
@@ -98,19 +98,17 @@ function useAuth() {
   return { user, loading, error, refresh, logout, setUser };
 }
 
-/* ========================= Intro (?좊땲硫붿씠??異붽?) ========================= */
+/* ========================= Intro ========================= */
 function WelcomeIntro({ user, onStart, onOpenGate, startHref = "/signup" }) {
   const { lang, t } = useI18n();
   const css = `
     :root{ --brand:#2563EB; --text:#111827; --muted:#9CA3AF; --header-h:64px; }
     .intro-wrap{
-      /* ?ㅻ뜑瑜??쒖쇅??1 ?붾㈃ 苑?李④쾶 */
       min-height:calc(100dvh - var(--header-h)); width:100%;
       background:#ffffff; text-align:center;
-      display:flex; flex-direction:column; /* ?곷떒/?섎떒 ?곸뿭 遺꾨━ */
+      display:flex; flex-direction:column;
       padding:clamp(12px,3vh,24px) 16px clamp(16px,4vh,28px);
     }
-    /* 以묒븰 而⑦뀗痢???댄?/遺???쒖옉?섍린)瑜??몃줈 以묒븰 ?뺣젹 */
     .intro-content{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:clamp(12px,3vh,28px); }
     .intro-title{ margin:0; font-size:clamp(28px,6.8vw,72px); line-height:1.08; font-weight:900; color:#b3b7be; letter-spacing:.3px; text-align:center; }
     .intro-title .brand{
@@ -172,7 +170,6 @@ function WelcomeIntro({ user, onStart, onOpenGate, startHref = "/signup" }) {
       .intro-title .brand{ animation:none !important; }
     }
 
-    /* ?묒? ?몃줈 ?붾㈃?먯꽌 ?щ갚 異뺤냼 */
     @media (max-height: 720px){
       .intro-wrap{ gap:14px; }
       .intro-start{ margin-top:14px; }
@@ -186,8 +183,7 @@ function WelcomeIntro({ user, onStart, onOpenGate, startHref = "/signup" }) {
       onOpenGate?.();
       return;
     }
-    // 鍮꾨줈洹몄씤 ?ъ슜?먮뒗 媛??濡쒓렇???뚮줈???좎?
-  // For guests, go to start/signup handler when provided
+    // For guests, go to start/signup handler when provided
     if (onStart) { e.preventDefault(); onStart(); }
   };
 
@@ -239,17 +235,16 @@ export default function App() {
   // Router navigate util
   const navigate = useNavigate();
 
-  // Chat/Imgcreate 紐⑤떖 ?곹깭
+
   const [showGate, setShowGate] = useState(false);
   const [showImgcreateModal, setShowImgcreateModal] = useState(false);
-  // 紐⑤떖 湲곕낯 ?ш린(?댁쟾怨??숈씪 泥닿컧): ProfileSelect? ?좎궗??1200px/90vh 洹쒖튃
+
   const [imgModalSize, setImgModalSize] = useState({ w: 1200, h: 0 });
 
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showManageProfiles, setShowManageProfiles] = useState(false);
   const [profileSelectRefreshTick, setProfileSelectRefreshTick] = useState(0);
 
-  // ?꾨줈???좏깮 紐⑤떖 ?リ린 ?숈옉: /chat 寃쎈줈?먯꽌 ?ロ엳硫??덉쑝濡??대룞
   // Profile modal close: if currently at /chat, navigate home
   const closeProfileModal = useCallback(() => {
     setShowProfileModal(false);
@@ -260,7 +255,6 @@ export default function App() {
     } catch {}
   }, [location.pathname, navigate]);
 
-  // ?몃??먯꽌(?? Chat) ?대?吏 ?앹꽦 紐⑤떖???대씪???좏샇
   // Open image-create modal when receiving window event
   useEffect(() => {
     const onOpenImgcreate = () => {
@@ -270,22 +264,18 @@ export default function App() {
     return () => window.removeEventListener("open-imgcreate", onOpenImgcreate);
   }, []);
 
-  // Imgcreate(iframe)?먯꽌 ?섏뼱?ㅻ뒗 硫붿떆吏 泥섎━ (?ш린 硫붿떆吏??臾댁떆?섏뿬 怨좎젙 ?ш린 ?좎?)
   useEffect(() => {
     const onMsg = (e) => {
       const d = e?.data;
       if (!d || !d.type) return;
       if (d.type === "imgcreate-size") {
-        // ?댁쟾?먮뒗 ?ш린 ?먮룞 議곗젅???덉쑝?? ?붿껌???곕씪 怨좎젙 ?ш린 ?좎?
-  // Skip dynamic sizing in this embed; keep fixed safe size
+        // Skip dynamic sizing in this embed; keep fixed safe size
         return;
       }
       if (d.type === "persona-created") {
-        // ???꾨줈???앹꽦 ?꾨즺: ?щ━?먯씠??紐⑤떖 ?リ퀬, ?꾨줈???좏깮 紐⑤떖???댁뼱 ????ぉ??蹂댁뿬以??
-  // Persona created: close iframe, refresh chooser, then open selector
+        // Persona created: close iframe, refresh chooser, then open selector
         try { setShowImgcreateModal(false); } catch {}
         setProfileSelectRefreshTick((v) => v + 1);
-        // 梨꾪똿 ?섏씠吏?먯꽌??梨꾪똿???좏깮 ?뚮줈?곕? ?ъ슜?섍퀬, 洹??몄뿉???꾩뿭 紐⑤떖???곕떎
         if (location.pathname === "/chat") {
           try { window.dispatchEvent(new CustomEvent("open-profile-select")); } catch {}
         } else {
@@ -294,8 +284,7 @@ export default function App() {
         return;
       }
       if (d.type === "open-profile-select") {
-        // ?몃?(iframe ???먯꽌 ?대┛ ?붿껌???꾩뿭 紐⑤떖濡?泥섎━
-  // Open profile selector on external request
+        // Open profile selector on external request
         setProfileSelectRefreshTick((v) => v + 1);
         setShowProfileModal(true);
         return;
@@ -305,7 +294,6 @@ export default function App() {
     return () => window.removeEventListener("message", onMsg);
   }, []);
 
-  // ?꾩뿭 而ㅼ뒪? ?대깽?몃줈???꾨줈???좏깮 紐⑤떖???????덇쾶 泥섎━
   // Listen for global events to open/close profile selection
   useEffect(() => {
     const onOpenProfile = () => {
@@ -333,8 +321,6 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, isEmbed]);
-
-  // Chat? /chat 吏꾩엯 ??寃뚯씠??紐⑤떖???듯빐 吏꾩엯
 
   return (
     <div className="min-h-screen flex flex-col bg-[linear-gradient(180deg,#f8fbff_0%,#ffffff_40%,#f7f7fb_100%)] text-slate-900">
@@ -392,7 +378,7 @@ export default function App() {
           <Route path="/signup" element={<Signup />} />
           <Route path="/consent" element={<ConsentPage />} />
           <Route path="/setup" element={<UserSetup />} />
-          {/* Imgcreate??紐⑤떖濡쒕룄 ?꾩슦吏留? ?쇱슦??吏곸젒 ?묎렐???덉슜 */}
+          
           <Route path="/imgcreate" element={<Imgcreate />} />
           <Route path="/profiles" element={<Profiles />} />
           <Route path="/profiles/manage" element={<ManageProfiles />} />
@@ -423,7 +409,6 @@ export default function App() {
           }}
           onConfirm={() => {
             setShowGate(false);
-            // 梨꾪똿 ?낆옣 ????긽 ?꾨줈????됲듃媛 ?대━?꾨줉 ?꾩뿭 紐⑤떖??耳좊떎
             setProfileSelectRefreshTick((v) => v + 1);
             setShowProfileModal(true);
             navigate("/chat");
@@ -442,7 +427,6 @@ export default function App() {
           <div
             style={{
               position: "relative",
-              // ProfileSelect? ?숈씪??泥닿컧 ?ш린: min(1200px, 96vw) x max 90dvh
               width: Math.min(1200, Math.floor((typeof window !== "undefined" ? window.innerWidth : 1920) * 0.96)),
               height: Math.min(Math.floor((typeof window !== "undefined" ? window.innerHeight : 1080) * 0.90), Math.floor((typeof window !== "undefined" ? window.innerHeight : 1080) * 0.96)),
               borderRadius: 18,
@@ -493,24 +477,19 @@ export default function App() {
             >
               ×
             </button>
-            {/* 濡쒓렇???곹깭???곕씪 紐⑤떖 ?댁슜??遺꾧린 */}
             {/* Logged-in: show profile selection */}
-// Utilities: animation/reveal below
             {user ? (
-              // ProfileSelect: ?좏깮 ??persona-chosen ?대깽?몃? ?꾪뙆?섍퀬 ?꾩슂??梨꾪똿?쇰줈 ?대룞
               <ProfileSelect
                 maxSlots={4}
                 refreshKey={profileSelectRefreshTick}
                 onAddProfileClick={() => {
                   setShowProfileModal(false);
-                  // ?대?吏 ?앹꽦 紐⑤떖 ?닿린
                   setShowImgcreateModal(true);
                 }}
                 onProfileChosen={(p) => {
                   try { if (p?.num) localStorage.setItem("activePersonaNum", String(p.num)); } catch {}
                   try { window.dispatchEvent(new CustomEvent("persona-chosen", { detail: p })); } catch {}
                   setShowProfileModal(false);
-                  // 梨꾪똿?쇰줈 ?대룞?섍굅?? ?대? 梨꾪똿?대㈃ 洹몃?濡??좎?(梨꾪똿? ?대깽?몃? 諛쏆븘 ?덈줈怨좎묠)
                   if (location.pathname !== "/chat") {
                     navigate("/chat");
                   }
@@ -571,7 +550,7 @@ export default function App() {
   );
 }
 
-/* ========================= 蹂댄샇 ?쇱슦??========================= */
+/* ========================= Private ========================= */
 function Private({ user, children }) {
   return (
     <>
@@ -588,7 +567,7 @@ function Private({ user, children }) {
 /* ========================= UI Utilities ========================= */
 // ?쒓굅: 紐⑤떖/?앹삤踰?愿??而댄룷?뚰듃?????댁긽 ?ъ슜?섏? ?딆쓬
 
-/* ========================= Reveal / Landing (?먮━?쒖떆?? ========================= */
+/* ========================= Reveal / Landing ========================= */
 function useInView(threshold = 0.15) {
   const ref = useRef(null);
   const [show, setShow] = useState(false);
@@ -618,6 +597,7 @@ function Reveal({ children, from = "up", delay = 0 }) {
 }
 
 function LandingSections() {
+  const { t } = useI18n();
   return (
     <section className="bg-[#ecf5ff]/50 border-t">
       <div className="mx-auto max-w-6xl px-6 py-16 space-y-20">
@@ -630,17 +610,14 @@ function LandingSections() {
             <Reveal from="right" delay={120}>
               <div className="card p-6 mb-2">
                 <div className="text-3xl font-black text-blue-500 mb-3">01</div>
-                <p className="text-slate-700 leading-relaxed">
-                  Create with prompts and styles. <br />
-                  Start your AI-powered content journey.
-                </p>
+                <p className="text-slate-700 leading-relaxed">{t('home.landing.s1.desc')}</p>
               </div>
             </Reveal>
 
             <Reveal from="up" delay={200}>
               <div className="flex items-center justify-center gap-3 mr-12">
-                <span className="text-2xl md:text-3xl text-blue-600">Step 1</span>
-                <span className="text-slate-500">Pick styles and categories to start.</span>
+                <span className="text-2xl md:text-3xl text-blue-600">{t('home.landing.step', { n: 1 })}</span>
+                <span className="text-slate-500">{t('home.landing.s1.title')}</span>
               </div>
             </Reveal>
           </div>
@@ -651,14 +628,14 @@ function LandingSections() {
             <Reveal from="left">
               <div className="card p-6">
                 <div className="text-3xl font-black text-blue-500 mb-3">02</div>
-                <p className="text-slate-700">Analyze results and iterate with guidance.</p>
+                <p className="text-slate-700">{t('home.landing.s2.desc')}</p>
               </div>
             </Reveal>
 
             <Reveal from="up" delay={100}>
               <div className="flex items-center justify-center gap-3 mr-24">
-                <span className="text-2xl md:text-3xl text-blue-600">Step 2</span>
-                <span className="text-slate-500 mr-3 mt-1">Refine outputs with templates and tips.</span>
+                <span className="text-2xl md:text-3xl text-blue-600">{t('home.landing.step', { n: 2 })}</span>
+                <span className="text-slate-500 mr-3 mt-1">{t('home.landing.s2.title')}</span>
               </div>
             </Reveal>
           </div>
@@ -677,14 +654,14 @@ function LandingSections() {
             <Reveal from="right" delay={120}>
               <div className="card p-6">
                 <div className="text-3xl font-black text-blue-500 mb-3">03</div>
-                <p className="text-slate-700">Schedule and auto-publish to Instagram &amp; Threads.</p>
+                <p className="text-slate-700">{t('home.landing.s3.desc')}</p>
               </div>
             </Reveal>
 
             <Reveal from="up" delay={200}>
               <div className="flex items-center justify-center gap-3 mr-24">
-                <span className="text-2xl md:text-3xl text-blue-600">Step 3</span>
-                <span className="text-slate-500">Automate your workflow and grow.</span>
+                <span className="text-2xl md:text-3xl text-blue-600">{t('home.landing.step', { n: 3 })}</span>
+                <span className="text-slate-500">{t('home.landing.s3.title')}</span>
               </div>
             </Reveal>
           </div>
@@ -694,19 +671,19 @@ function LandingSections() {
           <Reveal from="up">
             <div className="card h-48 md:h-56 p-4">
               <b className="text-blue-500">04</b>
-              <div className="text-slate-500 mt-2">Coming soon</div>
+              <div className="text-slate-500 mt-2">{t('common.comingSoon')}</div>
             </div>
           </Reveal>
           <Reveal from="up" delay={80}>
             <div className="card h-48 md:h-56 p-4 mt-10">
               <b className="text-blue-500">05</b>
-              <div className="text-slate-500 mt-2">Coming soon</div>
+              <div className="text-slate-500 mt-2">{t('common.comingSoon')}</div>
             </div>
           </Reveal>
           <Reveal from="up" delay={160}>
             <div className="card h-48 md:h-56 p-4 mt-20">
               <b className="text-blue-500">06</b>
-              <div className="text-slate-500 mt-2">Coming soon</div>
+              <div className="text-slate-500 mt-2">{t('common.comingSoon')}</div>
             </div>
           </Reveal>
         </div>

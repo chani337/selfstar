@@ -10,7 +10,7 @@
     "checkout": { "title": "프로 결제", "desc": "테스트용 결제 모달입니다. 실제 결제는 수행되지 않습니다.", "pay": "결제하기", "processing": "처리 중…", "successTitle": "프로로 업그레이드되었습니다", "offlineNote": "개발 모드: 백엔드 응답 없이 로컬에서 상태만 변경했습니다." },
     "alert": { "switchFree": { "success": "무료 요금제로 전환되었습니다.", "fail": "전환 실패: {msg}" } }
   },
-  "common": { "close": "닫기", "cancel": "취소", "confirm": "확인", "refresh": "새로고침", "loading": "불러오는 중…", "delete": "삭제" },
+  "common": { "close": "닫기", "cancel": "취소", "confirm": "확인", "refresh": "새로고침", "loading": "불러오는 중…", "delete": "삭제", "comingSoon": "준비 중" },
   "i18n": { "language": "언어", "korean": "한국어", "english": "English" },
   "header": {
     "home": "홈",
@@ -53,7 +53,13 @@
     "title": { "w1": "에", "w2": "오신", "w3": "것을", "w4": "환영합니다.", "pre": "환영합니다" },
     "brand": "SelfStar.AI",
     "subtitle": { "signed": "채팅을 시작해보세요.", "anon": "인물을 생성해 활동을 시작해 보세요." },
-    "cta": { "signed": "채팅 시작", "anon": "시작하기" }
+    "cta": { "signed": "채팅 시작", "anon": "시작하기" },
+    "landing": {
+      "step": "{n}단계",
+      "s1": { "title": "프롬프트와 스타일로 시작", "desc": "프롬프트와 스타일을 선택해 시작하세요." },
+      "s2": { "title": "결과 분석과 개선", "desc": "분석을 바탕으로 템플릿과 팁으로 다듬어 보세요." },
+      "s3": { "title": "예약 발행과 자동화", "desc": "Instagram과 Threads에 예약·자동 발행하세요." }
+    }
   },
   "footer": {
     "brand": { "desc1": "SelfStar에서 가상의 인물을", "desc2": "제작하여 인플루언서로 활동해보세요.", "desc3": "저희가 도와드릴게요." },
@@ -63,7 +69,7 @@
       "company": { "about": "소개", "jobs": "채용", "contact": "문의" }
     },
     "links": { "terms": "이용약관", "privacy": "개인정보처리방침", "support": "고객센터" },
-    "copyright": "All rights reserved."
+    "copyright": "모든 권리를 보유합니다."
   },
   "mypage": {
     "tabs": { "photos": "사진", "posts": "게시글", "drafts": "임시저장" },

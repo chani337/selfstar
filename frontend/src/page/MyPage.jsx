@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
+import { useI18n } from "../../i18n/index.js";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { API_BASE } from "@/api/client";
 import Credit from "./Credit.jsx";
 
 export default function MyPage() {
+  const { t } = useI18n();
   const location = useLocation();
   const navigate = useNavigate();
   const [tab, setTab] = useState("posts");
@@ -402,7 +404,30 @@ export default function MyPage() {
         const r = await fetch(`${API_BASE}/api/instagram/media/${encodeURIComponent(postModalItem.id)}/comments?persona_num=${activePersona.num}&limit=50`, { credentials: 'include' });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const j = await r.json();
-        setModalComments(Array.isArray(j?.items) ? j.items : []);
+        let items = Array.isArray(j?.items) ? j.items : [];
+        // Fallback: 일부 미디어(id)에서 빈 배열이 반환될 경우, 개요 API로 동일 게시물의 댓글을 대체 표시
+        if ((!items || items.length === 0) && postModalItem?.permalink) {
+          try {
+            const params = new URLSearchParams({ media_limit: '25', comments_limit: '50', exclude_seen: 'false' });
+            const rr = await fetch(`${API_BASE}/api/instagram/comments/overview?${params.toString()}`, { credentials: 'include' });
+            if (rr.ok) {
+              const jj = await rr.json();
+              const personas = Array.isArray(jj?.personas) ? jj.personas : [];
+              const me = personas.find(p => Number(p?.persona_num) === Number(activePersona.num));
+              if (me && Array.isArray(me.items)) {
+                // 우선 id로 매칭, 안 되면 permalink로 매칭
+                const m = me.items.find(x => String(x.media_id) === String(postModalItem.id))
+                          || me.items.find(x => x?.permalink && postModalItem?.permalink && String(x.permalink).trim() === String(postModalItem.permalink).trim());
+                if (m && Array.isArray(m.comments)) {
+                  items = m.comments.slice();
+                }
+              }
+            }
+          } catch (_) {
+            // fallback 실패는 무시
+          }
+        }
+        setModalComments(items);
       } catch (e) {
         setModalComments([]);
         setModalCommentsError(e?.message || String(e));
@@ -433,13 +458,13 @@ export default function MyPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-6">
           <aside className="lg:col-span-4 space-y-6">
             <Card>
-              <div className="text-sm text-slate-500">SNS 연동</div>
+              <div className="text-sm text-slate-500">{t('mypage.sections.integration')}</div>
               <div className="mt-4 space-y-4">
                 <ConnectRow
                   logo="IG"
-                  name={igMapping ? `@${igMapping.ig_username || "연결됨"}` : "instagram"}
-                  status={igMapping ? "연동됨" : (igMappingLoading ? "확인 중…" : "미연동")}
-                  hint={igMapping ? "instagram" : "연동해주세요!"}
+                  name={igMapping ? `@${igMapping.ig_username || t('mypage.link.connected')}` : "instagram"}
+                  status={igMapping ? t('mypage.link.status.connected') : (igMappingLoading ? t('mypage.link.status.checking') : t('mypage.link.status.disconnected'))}
+                  hint={igMapping ? "instagram" : t('mypage.link.pleaseLink')}
                 />
               </div>
               <button
@@ -449,12 +474,12 @@ export default function MyPage() {
                   startInstagramOAuth();
                 }}
               >
-                인스타 연동 하기
+                {t('mypage.link.linkInstagram')}
               </button>
             </Card>
 
             <Card>
-              <div className="text-sm text-slate-500">오늘의 할 일</div>
+              <div className="text-sm text-slate-500">{t('mypage.sections.todos')}</div>
               <ul className="mt-3 space-y-2">
                 {todos.map((t) => (
                   <li key={t.id} className="flex items-center gap-3">
@@ -480,17 +505,17 @@ export default function MyPage() {
           <section className="lg:col-span-8 space-y-6">
             <div className="flex items-center justify-between">
               <div className="rounded-full bg-white/80 border border-slate-200 p-1 inline-flex shadow-sm">
-                <TabButton active={tab === "photos"} onClick={() => setTab("photos")} label="사진" />
-                <TabButton active={tab === "posts"} onClick={() => setTab("posts")} label="게시글" />
-                <TabButton active={tab === "drafts"} onClick={() => setTab("drafts")} label="임시저장" />
+                <TabButton active={tab === "photos"} onClick={() => setTab("photos")} label={t('mypage.tabs.photos')} />
+                <TabButton active={tab === "posts"} onClick={() => setTab("posts")} label={t('mypage.tabs.posts')} />
+                <TabButton active={tab === "drafts"} onClick={() => setTab("drafts")} label={t('mypage.tabs.drafts')} />
               </div>
-              <Link to="/dashboard" className="btn light">대시보드</Link>
+              <Link to="/dashboard" className="btn light">{t('mypage.dashboard')}</Link>
             </div>
 
             {tab === "photos" && (
               <Card>
                 <div className="flex items-center justify-between mb-3">
-                  <div className="text-sm text-slate-500">갤러리 {Array.isArray(gallery) ? gallery.length : 0}장</div>
+                  <div className="text-sm text-slate-500">{t('mypage.gallery.count', { n: Array.isArray(gallery) ? gallery.length : 0 })}</div>
                   <div className="flex items-center gap-2">
                     <button className="btn light" onClick={() => {
                       // manual refresh
@@ -506,17 +531,17 @@ export default function MyPage() {
                           }
                         } finally { setGalleryLoading(false); }
                       })();
-                    }}>새로고침</button>
+                    }}>{t('mypage.gallery.refresh')}</button>
                     <button
                       className={`btn ${managePhotos ? 'primary' : 'light'}`}
                       onClick={() => setManagePhotos((v) => !v)}
-                    >{managePhotos ? '관리 종료' : '사진 관리'}</button>
+                    >{managePhotos ? t('mypage.gallery.manageEnd') : t('mypage.gallery.manage')}</button>
                   </div>
                 </div>
-                {galleryLoading && <div className="text-sm text-slate-500">불러오는 중…</div>}
-                {galleryError && <div className="text-sm text-red-600">갤러리를 불러오지 못했습니다: {galleryError}</div>}
+                {galleryLoading && <div className="text-sm text-slate-500">{t('mypage.gallery.loading')}</div>}
+                {galleryError && <div className="text-sm text-red-600">{t('mypage.gallery.error', { err: galleryError })}</div>}
                 {!galleryLoading && !galleryError && Array.isArray(gallery) && gallery.length === 0 && (
-                  <Empty title="아직 생성된 이미지가 없어요" action="새로 만들기" />
+                  <Empty title={t('mypage.gallery.emptyTitle')} action={t('mypage.gallery.emptyAction')} />
                 )}
                 {!galleryLoading && !galleryError && Array.isArray(gallery) && gallery.length > 0 && (
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -530,12 +555,12 @@ export default function MyPage() {
                         {managePhotos && (
                           <button
                             className="absolute top-2 right-2 text-[11px] px-2 py-1 rounded-full bg-white/90 border border-slate-200 hover:bg-white shadow"
-                            title="사진 삭제"
+                            title={t('mypage.gallery.deletePhoto')}
                             onClick={async (e) => {
                               e.preventDefault();
                               e.stopPropagation();
                               if (!g.id) return;
-                              if (!window.confirm("이 이미지를 삭제할까요?")) return;
+                              if (!window.confirm(t('mypage.gallery.confirmDelete'))) return;
                               try {
                                 const r = await fetch(`${API_BASE}/api/chat/gallery/${g.id}`, { method: 'DELETE', credentials: 'include' });
                                 if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -544,7 +569,7 @@ export default function MyPage() {
                                 alert(`삭제에 실패했습니다: ${err?.message || err}`);
                               }
                             }}
-                          >삭제</button>
+                          >{t('common.delete')}</button>
                         )}
                         {g.created_at && (
                           <div className="absolute bottom-0 left-0 right-0 text-[10px] text-white/90 bg-black/30 px-2 py-1">
@@ -561,7 +586,7 @@ export default function MyPage() {
             {tab === "drafts" && (
               <Card>
                 <div className="flex items-center justify-between mb-3">
-                  <div className="text-sm text-slate-500">임시저장 {Array.isArray(drafts) ? drafts.length : 0}개</div>
+                  <div className="text-sm text-slate-500">{t('mypage.drafts.count', { n: Array.isArray(drafts) ? drafts.length : 0 })}</div>
                   <div className="flex items-center gap-2">
                     <button
                       className="btn"
@@ -576,17 +601,17 @@ export default function MyPage() {
                           }
                         } finally { setDraftsLoading(false); }
                       }}
-                    >새로고침</button>
+                    >{t('mypage.drafts.refresh')}</button>
                     <button
                       className={`btn ${manageDrafts ? 'primary' : 'light'}`}
                       onClick={() => setManageDrafts((v) => !v)}
-                    >{manageDrafts ? '관리 종료' : '임시저장 관리'}</button>
+                    >{manageDrafts ? t('mypage.drafts.manageEnd') : t('mypage.drafts.manage')}</button>
                   </div>
                 </div>
-                {draftsLoading && <div className="text-sm text-slate-500">불러오는 중…</div>}
-                {draftsError && <div className="text-sm text-red-600">임시저장 불러오지 못했습니다: {draftsError}</div>}
+                {draftsLoading && <div className="text-sm text-slate-500">{t('mypage.drafts.loading')}</div>}
+                {draftsError && <div className="text-sm text-red-600">{t('mypage.drafts.error', { err: draftsError })}</div>}
                 {!draftsLoading && !draftsError && Array.isArray(drafts) && drafts.length === 0 && (
-                  <Empty title="아직 임시저장 항목이 없어요" action="바로 만들기" />
+                  <Empty title={t('mypage.drafts.emptyTitle')} action={t('mypage.drafts.emptyAction')} />
                 )}
                 {!draftsLoading && !draftsError && Array.isArray(drafts) && drafts.length > 0 && (
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -614,7 +639,7 @@ export default function MyPage() {
                                 }
                               } catch {}
                             }}
-                          >삭제</button>
+                          >{t('mypage.drafts.delete')}</button>
                         )}
                       </div>
                     ))}
@@ -629,7 +654,7 @@ export default function MyPage() {
                 {/* Instagram posts (DB) */}
                 <Card>
                   <div className="flex items-center justify-between mb-3">
-                    <div className="text-sm text-slate-500">인스타 게시글 {Array.isArray(instaPosts) ? instaPosts.length : 0}개</div>
+                    <div className="text-sm text-slate-500">{t('mypage.posts.count', { n: Array.isArray(instaPosts) ? instaPosts.length : 0 })}</div>
                     <div className="flex items-center gap-2">
                       <button
                         className="btn"
@@ -647,24 +672,24 @@ export default function MyPage() {
                             }
                           } finally { setInstaLoading(false); }
                         }}
-                      >동기화</button>
+                      >{t('mypage.posts.sync')}</button>
                       <button
                         className={`btn ${managePosts ? 'primary' : 'light'}`}
                         onClick={() => setManagePosts((v) => !v)}
-                      >{managePosts ? '관리 종료' : '게시글 관리'}</button>
+                      >{managePosts ? t('mypage.posts.manageEnd') : t('mypage.posts.manage')}</button>
                     </div>
                   </div>
-                  {instaLoading && <div className="text-sm text-slate-500">불러오는 중…</div>}
+                  {instaLoading && <div className="text-sm text-slate-500">{t('mypage.posts.loading')}</div>}
                   {instaError && (
                     <div className="text-sm text-red-600">
-                      게시글을 불러오지 못했습니다: {instaError}
+                      {t('mypage.posts.error', { err: instaError })}
                       {(String(instaError).includes('401') || String(instaError).includes('HTTP 401')) && (
-                        <div className="mt-1 text-slate-700">인스타그램 연동이 필요하거나 인증이 만료되었습니다. 우측의 연동 관리에서 재인증해 주세요.</div>
+                        <div className="mt-1 text-slate-700">{t('mypage.posts.reauthHint')}</div>
                       )}
                     </div>
                   )}
                   {!instaLoading && !instaError && Array.isArray(instaPosts) && instaPosts.length === 0 && (
-                    <Empty title="연동된 인스타 게시글이 없어요" action="동기화" />
+                    <Empty title={t('mypage.posts.emptyTitle')} action={t('mypage.posts.emptyAction')} />
                   )}
                   {!instaLoading && !instaError && Array.isArray(instaPosts) && instaPosts.length > 0 && (
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">

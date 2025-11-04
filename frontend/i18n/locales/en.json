@@ -102,7 +102,13 @@
     "title": { "w1": " Welcome", "w2": "to", "w3": "SelfStar", "w4": "AI", "pre": "Welcome to" },
     "brand": "SelfStar.AI",
     "subtitle": { "signed": "Start chatting.", "anon": "Create a persona and get started." },
-    "cta": { "signed": "Start Chat", "anon": "Get Started" }
+    "cta": { "signed": "Start Chat", "anon": "Get Started" },
+    "landing": {
+      "step": "Step {n}",
+      "s1": { "title": "Start with prompts and styles", "desc": "Choose prompts and styles to get started." },
+      "s2": { "title": "Analyze and refine", "desc": "Iterate with templates and guidance." },
+      "s3": { "title": "Schedule and automate", "desc": "Auto-publish to Instagram & Threads." }
+    }
   },
   "footer": {
     "brand": {
@@ -143,7 +149,8 @@
     "confirm": "OK",
     "refresh": "Refresh",
     "loading": "Loading…",
-    "delete": "Delete"
+    "delete": "Delete",
+    "comingSoon": "Coming soon"
   },
   "mypage": {
     "tabs": { "photos": "Photos", "posts": "Posts", "drafts": "Drafts" },

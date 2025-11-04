@@ -1,6 +1,9 @@
 import { useEffect } from "react";
+import { useI18n } from "../../i18n/index.js";
 
 export default function ChatGateModal({ onConfirm, onCancel }) {
+  const { t } = useI18n();
+
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onCancel?.(); };
     window.addEventListener("keydown", onKey);
@@ -18,18 +21,19 @@ export default function ChatGateModal({ onConfirm, onCancel }) {
       `}</style>
       <div className="w-[min(560px,92vw)] rounded-2xl border border-blue-200 bg-white p-6 animate-pop glow relative overflow-hidden">
         <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-blue-100 blur-2xl opacity-70 floaty" />
-        <h3 className="text-2xl font-extrabold mb-2 tracking-tight">채팅을 시작하기 전에</h3>
-        <p className="text-slate-600">가이드와 주의사항을 확인해 주세요. 계속하면 채팅이 시작됩니다.</p>
+        <h3 className="text-2xl font-extrabold mb-2 tracking-tight">{t('chatGate.title')}</h3>
+        <p className="text-slate-600">{t('chatGate.desc')}</p>
         <ul className="mt-3 text-sm text-slate-600 list-disc pl-5 space-y-1">
-          <li>서비스 정책과 커뮤니티 가이드를 준수합니다.</li>
-          <li>개인정보를 공유하지 않습니다.</li>
-          <li>부적절한 요청은 제한될 수 있습니다.</li>
+          <li>{t('chatGate.b1')}</li>
+          <li>{t('chatGate.b2')}</li>
+          <li>{t('chatGate.b3')}</li>
         </ul>
         <div className="flex justify-end gap-2 mt-5">
-          <button className="btn" onClick={onCancel}>취소</button>
-          <button className="btn primary" onClick={onConfirm}>동의하고 채팅 시작</button>
+          <button className="btn" onClick={onCancel}>{t('common.cancel')}</button>
+          <button className="btn primary" onClick={onConfirm}>{t('chatGate.confirm')}</button>
         </div>
       </div>
     </div>
   );
 }
+

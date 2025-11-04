@@ -1,26 +1,26 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Maximize2, X } from "lucide-react";
-// Use images from project img/ folder (bundled by Vite)
+import { useI18n } from "../../i18n/index.js";
 import step3ChatInput from "../../img/step3-chat-input.png";
 import step3Generating from "../../img/step3-generating.png";
 import step3ResultDrag from "../../img/step3-result-drag.png";
 
-/**
- * Step3Carousel
- * - Left-column friendly carousel with lightbox for Step 3 showcase.
- * - Defaults to images under frontend/img imported via Vite bundling
- *
- * Props:
- * - images: Array<{ src: string, alt: string, badge?: string }>
- */
-export default function Step3Carousel({ images = defaultSlides }) {
+export default function Step3Carousel({ images }) {
+  const { t } = useI18n();
   const [idx, setIdx] = useState(0);
   const [open, setOpen] = useState(false);
 
-  const prev = () => setIdx((i) => (i - 1 + images.length) % images.length);
-  const next = () => setIdx((i) => (i + 1) % images.length);
+  const slides = useMemo(() => (
+    images && images.length ? images : [
+      { src: step3ChatInput, alt: t('carousel.alt.input'), badge: t('carousel.badge.input'), padVertical: true },
+      { src: step3Generating, alt: t('carousel.alt.generating'), badge: t('carousel.badge.generating'), padVertical: true },
+      { src: step3ResultDrag, alt: t('carousel.alt.result'), badge: t('carousel.badge.drag'), padVertical: false },
+    ]
+  ), [images, t]);
 
-  // Keyboard nav when lightbox is open
+  const prev = () => setIdx((i) => (i - 1 + slides.length) % slides.length);
+  const next = () => setIdx((i) => (i + 1) % slides.length);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => {
@@ -35,108 +35,63 @@ export default function Step3Carousel({ images = defaultSlides }) {
   return (
     <div className="relative rounded-[1.8rem] border bg-white shadow overflow-hidden">
       <div className="relative w-full bg-neutral-50" style={{ aspectRatio: "4/5" }}>
-        {/* For the first two slides we add white vertical padding so the image appears with top/bottom whitespace */}
-        {images[idx].padVertical ? (
+        {slides[idx].padVertical ? (
           <div className="absolute inset-0 flex items-center justify-center bg-white p-6">
-            <img
-              src={images[idx].src}
-              alt={images[idx].alt}
-              className="max-h-full w-auto h-auto object-contain"
-              loading="eager"
-            />
+            <img src={slides[idx].src} alt={slides[idx].alt} className="max-h-full w-auto h-auto object-contain" loading="eager" />
           </div>
         ) : (
-          <img
-            src={images[idx].src}
-            alt={images[idx].alt}
-            className="absolute inset-0 w-full h-full object-cover"
-            loading="eager"
-          />
+          <img src={slides[idx].src} alt={slides[idx].alt} className="absolute inset-0 w-full h-full object-cover" loading="eager" />
         )}
-        {/* badge */}
-        {images[idx].badge && (
+
+        {slides[idx].badge && (
           <div className="absolute left-3 top-3 inline-flex items-center gap-2 rounded-full bg-black/60 text-white text-xs px-3 py-1">
-            <span className="font-medium">{images[idx].badge}</span>
+            <span className="font-medium">{slides[idx].badge}</span>
           </div>
         )}
-        {/* controls */}
-        {images.length > 1 && (
+
+        {slides.length > 1 && (
           <>
-            <button
-              aria-label="이전"
-              onClick={prev}
-              className="absolute left-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-white/85 text-neutral-800 shadow hover:bg-white"
-            >
+            <button aria-label={t('carousel.prev')} onClick={prev} className="absolute left-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-white/85 text-neutral-800 shadow hover:bg-white">
               <ChevronLeft className="mx-auto" />
             </button>
-            <button
-              aria-label="다음"
-              onClick={next}
-              className="absolute right-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-white/85 text-neutral-800 shadow hover:bg-white"
-            >
+            <button aria-label={t('carousel.next')} onClick={next} className="absolute right-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-white/85 text-neutral-800 shadow hover:bg-white">
               <ChevronRight className="mx-auto" />
             </button>
           </>
         )}
-        {/* dots */}
-        {images.length > 1 && (
+        {slides.length > 1 && (
           <div className="absolute inset-x-0 bottom-3 flex justify-center">
             <div className="bg-white/80 rounded-full px-2 py-1 shadow">
-              {images.map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => setIdx(i)}
-                  className={`mx-1 h-2 w-2 rounded-full ${i === idx ? "bg-neutral-900" : "bg-neutral-400"}`}
-                  aria-label={`슬라이드 ${i + 1}`}
-                />
+              {slides.map((_, i) => (
+                <button key={i} onClick={() => setIdx(i)} className={`mx-1 h-2 w-2 rounded-full ${i === idx ? 'bg-neutral-900' : 'bg-neutral-400'}`} aria-label={t('carousel.slideN', { n: i + 1 })} />
               ))}
             </div>
           </div>
         )}
-        {/* enlarge */}
-        <button
-          onClick={() => setOpen(true)}
-          className="absolute right-3 top-3 h-9 px-3 rounded-full bg-white/85 text-neutral-800 shadow hover:bg-white text-xs inline-flex items-center gap-1"
-        >
-          <Maximize2 className="size-4" /> 자세히 보기
+
+        <button onClick={() => setOpen(true)} className="absolute right-3 top-3 h-9 px-3 rounded-full bg-white/85 text-neutral-800 shadow hover:bg-white text-xs inline-flex items-center gap-1">
+          <Maximize2 className="size-4" /> {t('carousel.enlarge')}
         </button>
       </div>
 
-      {/* Lightbox */}
       {open && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm">
-          <button
-            onClick={() => setOpen(false)}
-            className="absolute right-6 top-6 h-10 w-10 rounded-full bg-white/90 text-neutral-800 shadow border"
-            aria-label="닫기"
-          >
+          <button onClick={() => setOpen(false)} className="absolute right-6 top-6 h-10 w-10 rounded-full bg-white/90 text-neutral-800 shadow border" aria-label={t('common.close')}>
             <X className="mx-auto" />
           </button>
           <div className="h-full w-full grid place-items-center p-6">
             <div className="relative w-full max-w-5xl aspect-video bg-black rounded-xl overflow-hidden flex items-center justify-center">
-              {images[idx].padVertical ? (
+              {slides[idx].padVertical ? (
                 <div className="w-full h-full flex items-center justify-center bg-white p-6">
-                  <img src={images[idx].src} alt={images[idx].alt} className="max-h-full w-auto object-contain" />
+                  <img src={slides[idx].src} alt={slides[idx].alt} className="max-h-full w-auto object-contain" />
                 </div>
               ) : (
-                <img
-                  src={images[idx].src}
-                  alt={images[idx].alt}
-                  className="absolute inset-0 w-full h-full object-contain bg-black"
-                />
+                <img src={slides[idx].src} alt={slides[idx].alt} className="absolute inset-0 w-full h-full object-contain bg-black" />
               )}
-              <button
-                onClick={prev}
-                className="absolute left-3 top-1/2 -translate-y-1/2 h-12 w-12 rounded-full bg-white/90 text-neutral-800 shadow"
-                aria-label="이전"
-              >
+              <button onClick={prev} className="absolute left-3 top-1/2 -translate-y-1/2 h-12 w-12 rounded-full bg-white/90 text-neutral-800 shadow" aria-label={t('carousel.prev')}>
                 <ChevronLeft className="mx-auto" />
               </button>
-              <button
-                onClick={next}
-                className="absolute right-3 top-1/2 -translate-y-1/2 h-12 w-12 rounded-full bg-white/90 text-neutral-800 shadow"
-                aria-label="다음"
-              >
+              <button onClick={next} className="absolute right-3 top-1/2 -translate-y-1/2 h-12 w-12 rounded-full bg-white/90 text-neutral-800 shadow" aria-label={t('carousel.next')}>
                 <ChevronRight className="mx-auto" />
               </button>
             </div>
@@ -147,8 +102,3 @@ export default function Step3Carousel({ images = defaultSlides }) {
   );
 }
 
-const defaultSlides = [
-  { src: step3ChatInput, alt: "채팅 입력 화면", badge: "프롬프트 입력", padVertical: true },
-  { src: step3Generating, alt: "생성 대기 화면", badge: "생성 대기", padVertical: true },
-  { src: step3ResultDrag, alt: "결과 드래그 화면", badge: "프리뷰로 드래그", padVertical: false },
-];

@@ -22,6 +22,9 @@ from app.api.routes import chat as chat_route
 from app.api.routes import files as files_route
 from app.api.routes import instagram_publish as ig_publish_route
 from app.api.routes import instagram_caption as ig_caption_route
+from app.api.routes import instagram_comments as ig_comments_route
+from app.api.routes import instagram_reply as ig_reply_route
+from app.api.routes import instagram_notifications as ig_notifications_route
 from app.api.routes import credits as credits_route
 # posts 라우터가 있을 수도 없을 수도 있으니, 존재하면만 추가
 try:
@@ -65,6 +68,9 @@ app.include_router(chat_route.router)
 app.include_router(files_route.router)
 app.include_router(ig_publish_route.router)
 app.include_router(ig_caption_route.router)
+app.include_router(ig_comments_route.router)
+app.include_router(ig_reply_route.router)
+app.include_router(ig_notifications_route.router)
 app.include_router(credits_route.router)
 
 
