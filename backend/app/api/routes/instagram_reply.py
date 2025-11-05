@@ -160,9 +160,30 @@ async def auto_reply_to_comment(request: Request, body: AutoReplyBody):
 
     - Uses AI service /comment/reply with {post_img, post, personality, text, persona_img}
     - Posts reply to Graph: POST /{comment_id}/replies
-    - ACK-hides via ss_instagram_event_seen (best-effort)
+    - PRE-ACK-hides via ss_instagram_event_seen BEFORE processing to prevent duplicates
     """
     uid = _require_login(request)
+
+    # 0) PRE-ACK: Mark comment as seen BEFORE processing to prevent duplicate replies
+    try:
+        pool = await get_mysql_pool()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO ss_instagram_event_seen (external_id, user_id, user_persona_num)
+                    VALUES (%s,%s,%s)
+                    ON DUPLICATE KEY UPDATE updated_at=CURRENT_TIMESTAMP
+                    """,
+                    (str(body.comment_id), int(uid), int(body.persona_num)),
+                )
+                try:
+                    await conn.commit()
+                except Exception:
+                    pass
+    except Exception:
+        # If PRE-ACK fails, abort to avoid duplicate replies
+        raise HTTPException(status_code=500, detail="pre_ack_failed")
 
     # 1) Ensure persona is linked and token available
     mapping = await _get_persona_instagram_mapping(int(uid), int(body.persona_num))
@@ -263,29 +284,7 @@ async def auto_reply_to_comment(request: Request, body: AutoReplyBody):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"graph_reply_failed:{e}")
 
-    # 5) ACK-hide the original comment id (best-effort)
-    try:
-        pool = await get_mysql_pool()
-        async with pool.acquire() as conn:
-            async with conn.cursor() as cur:
-                try:
-                    await cur.execute(
-                        """
-                        INSERT INTO ss_instagram_event_seen (external_id, user_id, user_persona_num)
-                        VALUES (%s,%s,%s)
-                        ON DUPLICATE KEY UPDATE updated_at=CURRENT_TIMESTAMP
-                        """,
-                        (str(body.comment_id), int(uid), int(body.persona_num)),
-                    )
-                    try:
-                        await conn.commit()
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
-    except Exception:
-        pass
-
+    # 5) Already PRE-ACK-ed, no need to ACK again
     return {"ok": True, "reply": reply_text, "result": grj}
 
 
@@ -809,6 +808,28 @@ async def reply_to_comments_bulk(request: Request, body: BulkReplyBody):
         async with httpx.AsyncClient(timeout=20) as client:
             for it in body.items:
                 try:
+                    # PRE-ACK: Mark as seen before processing to prevent duplicates
+                    try:
+                        pool = await get_mysql_pool()
+                        async with pool.acquire() as conn:
+                            async with conn.cursor() as cur:
+                                await cur.execute(
+                                    """
+                                    INSERT INTO ss_instagram_event_seen (external_id, user_id, user_persona_num)
+                                    VALUES (%s,%s,%s)
+                                    ON DUPLICATE KEY UPDATE updated_at=CURRENT_TIMESTAMP
+                                    """,
+                                    (str(it.comment_id), int(uid), int(body.persona_num)),
+                                )
+                                try:
+                                    await conn.commit()
+                                except Exception:
+                                    pass
+                    except Exception:
+                        # If pre-ACK fails, skip to avoid duplicates
+                        results.append({"comment_id": it.comment_id, "ok": False, "status": 500, "error": "pre_ack_failed"})
+                        continue
+
                     r = await client.post(
                         f"{IG_GRAPH}/{it.comment_id}/replies",
                         data={"message": it.message, "access_token": token},
@@ -826,28 +847,7 @@ async def reply_to_comments_bulk(request: Request, body: BulkReplyBody):
                         continue
                     data = r.json() or {}
                     results.append({"comment_id": it.comment_id, "ok": True, "status": 200, "result": data})
-                    # ACK-hide in DB (best-effort)
-                    try:
-                        pool = await get_mysql_pool()
-                        async with pool.acquire() as conn:
-                            async with conn.cursor() as cur:
-                                try:
-                                    await cur.execute(
-                                        """
-                                        INSERT INTO ss_instagram_event_seen (external_id, user_id, user_persona_num)
-                                        VALUES (%s,%s,%s)
-                                        ON DUPLICATE KEY UPDATE updated_at=CURRENT_TIMESTAMP
-                                        """,
-                                        (str(it.comment_id), int(uid), int(body.persona_num)),
-                                    )
-                                    try:
-                                        await conn.commit()
-                                    except Exception:
-                                        pass
-                                except Exception:
-                                    pass
-                    except Exception:
-                        pass
+                    # Already PRE-ACK-ed, no need to ACK again
                 except Exception as e:
                     results.append({"comment_id": it.comment_id, "ok": False, "status": 500, "error": str(e)})
         return {"ok": True, "results": results}

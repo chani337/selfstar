@@ -509,29 +509,7 @@ async def _auto_reply_scheduler_loop():
                 except Exception:
                     return False
 
-            # 5) ACK original comment id
-            try:
-                pool = await get_mysql_pool()
-                async with pool.acquire() as conn:
-                    async with conn.cursor() as cur:
-                        try:
-                            await cur.execute(
-                                """
-                                INSERT INTO ss_instagram_event_seen (external_id, user_id, user_persona_num)
-                                VALUES (%s,%s,%s)
-                                ON DUPLICATE KEY UPDATE updated_at=CURRENT_TIMESTAMP
-                                """,
-                                (str(comment_id), int(uid), int(persona_num)),
-                            )
-                            try:
-                                await conn.commit()
-                            except Exception:
-                                pass
-                        except Exception:
-                            pass
-            except Exception:
-                pass
-
+            # No need for ACK here - already done in PRE-ACK before processing
             try:
                 sched_log.info(f"auto-image-publish: ok uid={uid} num={persona_num}")
             except Exception:
@@ -738,6 +716,28 @@ async def _auto_reply_scheduler_loop():
                         posted_count = 0
                         for task in comment_tasks:
                             try:
+                                # PRE-ACK: Mark as seen BEFORE processing to prevent duplicates
+                                comment_id_to_ack = str(task["comment_id"])
+                                try:
+                                    async with (await get_mysql_pool()).acquire() as conn:
+                                        async with conn.cursor() as cur:
+                                            await cur.execute(
+                                                """
+                                                INSERT INTO ss_instagram_event_seen (external_id, user_id, user_persona_num)
+                                                VALUES (%s,%s,%s)
+                                                ON DUPLICATE KEY UPDATE updated_at=CURRENT_TIMESTAMP
+                                                """,
+                                                (comment_id_to_ack, uid, persona_num),
+                                            )
+                                            try:
+                                                await conn.commit()
+                                            except Exception:
+                                                pass
+                                except Exception:
+                                    # If pre-ACK fails, skip this comment to avoid duplicates
+                                    sched_log.warning(f"auto-reply: pre-ACK failed for {comment_id_to_ack}, skipping")
+                                    continue
+
                                 # 0) For image-like requests, auto-generate and publish a post (Business personas)
                                 if _looks_like_image_request(task.get("text", "")):
                                     auto_publish_enabled = (os.getenv("AUTO_IMAGE_AUTOPUBLISH_ENABLED", "1").strip().lower() in ("1", "true", "yes"))
@@ -746,7 +746,7 @@ async def _auto_reply_scheduler_loop():
                                             client, ai_url, uid, persona_num, str(ig_user_id), str(token), task["comment_id"], task.get("text", ""), persona_img_norm, persona_params_json, sched_log
                                         )
                                         if ok:
-                                            # After successful publish and ACK, skip text reply
+                                            # After successful publish, skip text reply
                                             try:
                                                 posted_count += 1
                                             except Exception:
@@ -797,24 +797,7 @@ async def _auto_reply_scheduler_loop():
                                         pass
                                     continue
 
-                                # 3) ACK comment id
-                                try:
-                                    async with (await get_mysql_pool()).acquire() as conn:
-                                        async with conn.cursor() as cur:
-                                            await cur.execute(
-                                                """
-                                                INSERT INTO ss_instagram_event_seen (external_id, user_id, user_persona_num)
-                                                VALUES (%s,%s,%s)
-                                                ON DUPLICATE KEY UPDATE updated_at=CURRENT_TIMESTAMP
-                                                """,
-                                                (str(task["comment_id"]), uid, persona_num),
-                                            )
-                                            try:
-                                                await conn.commit()
-                                            except Exception:
-                                                pass
-                                except Exception:
-                                    pass
+                                # 3) Already ACK-ed before processing, so just increment counter
                                 try:
                                     posted_count += 1
                                 except Exception:
