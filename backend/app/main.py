@@ -202,7 +202,7 @@ async def _daily_snapshot_loop():
         await asyncio.sleep(60 * 60 * 24)
 
 
-# ===== Background: Auto-reply scheduler (every ~5 minutes) =====
+# ===== Background: Auto-reply scheduler (interval configurable) =====
 async def _auto_reply_scheduler_loop():
     """Every few minutes, for Business users' linked personas:
     - Fetch recent media and comments
@@ -358,10 +358,19 @@ async def _auto_reply_scheduler_loop():
                         # Extract persona personality and image
                         personality = ""
                         persona_img = p.get("persona_img")
+                        persona_params_json: str | None = None
                         try:
                             raw = p.get("persona_parameters")
                             import json as _json
                             pp = _json.loads(raw) if isinstance(raw, str) else (raw or {})
+                            try:
+                                if isinstance(raw, (dict, list)):
+                                    import json as _json2
+                                    persona_params_json = _json2.dumps(raw, ensure_ascii=False)
+                                elif isinstance(raw, str):
+                                    persona_params_json = raw
+                            except Exception:
+                                persona_params_json = None
                             if isinstance(pp, dict):
                                 for key in ("personality", "tone", "style", "voice"):
                                     val = pp.get(key)
@@ -401,10 +410,99 @@ async def _auto_reply_scheduler_loop():
 
                         persona_img_norm = _norm_img(persona_img)
 
+                        # Simple detector for image-generation requests (shared with routes)
+                        _IMAGE_KEYWORDS = [
+                            "사진", "이미지", "그림", "그려줘", "만들어줘",
+                            "image", "picture", "photo", "render", "generate",
+                        ]
+                        def _looks_like_image_request(text: str) -> bool:
+                            try:
+                                low = (text or "").lower()
+                                for k in _IMAGE_KEYWORDS:
+                                    if k.lower() in low:
+                                        return True
+                                for s in ("만들어줘", "그려줘", "렌더링"):
+                                    if s in (text or ""):
+                                        return True
+                            except Exception:
+                                pass
+                            return False
+
                         # Execute replies sequentially to keep load modest
                         posted_count = 0
                         for task in comment_tasks:
                             try:
+                                # 0) If the comment looks like an image request, generate image as a best-effort side effect
+                                try:
+                                    auto_img_enabled = (os.getenv("AUTO_IMAGE_COMMENTS", "1").strip().lower() in ("1", "true", "yes"))
+                                    if auto_img_enabled and _looks_like_image_request(task.get("text", "")):
+                                        # Need persona image to drive style; skip if missing
+                                        if persona_img_norm:
+                                            # Prepare payload similar to routes.instagram_reply.auto_image_for_comment
+                                            ai_payload = {
+                                                "user_text": task.get("text"),
+                                                "persona_img": persona_img_norm,
+                                                "persona": persona_params_json or "",
+                                            }
+                                            try:
+                                                r = await client.post(f"{ai_url}/chat/image", json=ai_payload)
+                                                if r.status_code == 200:
+                                                    aj = r.json() or {}
+                                                    img_data_uri = aj.get("image")
+                                                    if isinstance(img_data_uri, str) and img_data_uri.startswith("data:"):
+                                                        try:
+                                                            from app.core.s3 import s3_enabled, presign_get_url, put_data_uri
+                                                            if s3_enabled():
+                                                                key = put_data_uri(
+                                                                    img_data_uri,
+                                                                    model=None,
+                                                                    key_prefix=f"drafts/{uid}/{persona_num}",
+                                                                    base_prefix="",
+                                                                    include_model=False,
+                                                                    include_date=False,
+                                                                )
+                                                                # Store record (best-effort)
+                                                                try:
+                                                                    pool2 = await get_mysql_pool()
+                                                                    async with pool2.acquire() as conn2:
+                                                                        async with conn2.cursor() as cur2:
+                                                                            try:
+                                                                                await cur2.execute(
+                                                                                    """
+                                                                                    INSERT INTO ss_chat_img (user_id, persona_id, img_key)
+                                                                                    VALUES (%s, %s, %s)
+                                                                                    """,
+                                                                                    (int(uid), int(persona_num), key),
+                                                                                )
+                                                                                try:
+                                                                                    await conn2.commit()
+                                                                                except Exception:
+                                                                                    pass
+                                                                            except Exception:
+                                                                                # Fallback column name
+                                                                                try:
+                                                                                    await cur2.execute(
+                                                                                        """
+                                                                                        INSERT INTO ss_chat_img (user_id, persona_id, persona_chat_img)
+                                                                                        VALUES (%s, %s, %s)
+                                                                                        """,
+                                                                                        (int(uid), int(persona_num), key),
+                                                                                    )
+                                                                                    try:
+                                                                                        await conn2.commit()
+                                                                                    except Exception:
+                                                                                        pass
+                                                                                except Exception:
+                                                                                    pass
+                                                            # If no S3, skip storing
+                                                        except Exception:
+                                                            pass
+                                            except Exception:
+                                                # Ignore AI errors for image path and continue with reply
+                                                pass
+                                except Exception:
+                                    pass
+
                                 # 1) AI generate reply
                                 payload = {
                                     "post_img": task["post_img"],
@@ -483,7 +581,9 @@ async def _auto_reply_scheduler_loop():
             except Exception:
                 pass
         finally:
-            await asyncio.sleep(max(60, interval))
+            # Sleep for configured interval without enforcing a 60s minimum,
+            # so that demo/dev can run at faster cadences (e.g., 30s).
+            await asyncio.sleep(interval)
 
 
 async def _delayed_start_background_tasks():

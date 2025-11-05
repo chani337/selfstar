@@ -665,11 +665,13 @@ async def auto_image_for_comment(request: Request, body: AutoImageBody):
                         if not creation_id:
                             publish_error = "creation_id_missing"
                         else:
-                            # Wait briefly for container readiness
+                            # Wait briefly for container readiness (configurable)
                             try:
                                 async with httpx.AsyncClient(timeout=30) as client:
                                     finished = False
-                                    for _ in range(20):
+                                    poll_interval = float(os.getenv("IG_POLL_INTERVAL_SECONDS", "1.0") or 1.0)
+                                    poll_attempts = int(os.getenv("IG_POLL_MAX_ATTEMPTS", "20") or 20)
+                                    for _ in range(poll_attempts):
                                         gr = await client.get(
                                             f"{IG_GRAPH}/{creation_id}",
                                             params={"access_token": token, "fields": "status_code"},
@@ -681,7 +683,7 @@ async def auto_image_for_comment(request: Request, body: AutoImageBody):
                                                 break
                                             if st == "ERROR":
                                                 break
-                                        await asyncio.sleep(1.0)
+                                        await asyncio.sleep(poll_interval)
                             except Exception:
                                 pass
 
@@ -699,7 +701,8 @@ async def auto_image_for_comment(request: Request, body: AutoImageBody):
                                         j = pub.json() or {}
                                         err = (j.get("error") or {})
                                         if err.get("code") == 9007 or err.get("error_subcode") == 2207027:
-                                            await asyncio.sleep(2.0)
+                                            retry_sleep = float(os.getenv("IG_PUBLISH_RETRY_SLEEP", "2.0") or 2.0)
+                                            await asyncio.sleep(retry_sleep)
                                             pub2 = await _do_publish()
                                             if pub2.status_code == 200:
                                                 publish_result = pub2.json()
