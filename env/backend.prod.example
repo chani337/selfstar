@@ -43,8 +43,22 @@ META_WEBHOOK_VERIFY_TOKEN=
 # Enable/disable background loop
 # AUTO_REPLY_SCHEDULER_ENABLED=1
 # Interval between scans in seconds (e.g., 480 = 8 minutes)
-# AUTO_REPLY_INTERVAL_SECONDS=480
+# AUTO_REPLY_INTERVAL_SECONDS=60
 # Limits per cycle (tune to control load)
 # AUTO_REPLY_MEDIA_LIMIT=3
 # AUTO_REPLY_COMMENTS_LIMIT=5
 # AUTO_REPLY_MAX_PER_PERSONA=5
+
+# Instagram publish timing (container polling + publish retry)
+# IG_POLL_INTERVAL_SECONDS=0.5
+# IG_POLL_MAX_ATTEMPTS=40
+# IG_PUBLISH_RETRY_SLEEP=1.0
+
+# Auto image autopublish for Business plan
+# AUTO_IMAGE_AUTOPUBLISH_ENABLED=1
+
+# Ultra-fast mode (use with caution: may increase API load/rate limits)
+# AUTO_REPLY_INTERVAL_SECONDS=5
+# IG_POLL_INTERVAL_SECONDS=0.25
+# IG_POLL_MAX_ATTEMPTS=60
+# IG_PUBLISH_RETRY_SLEEP=0.5

@@ -43,6 +43,13 @@ services:
       # Ensure app knows its own/public URLs
       - BACKEND_URL=https://selfstar.duckdns.org
       - FRONTEND_URL=https://selfstar.duckdns.org
+      # Fast auto-reply/auto-post cadence (tune carefully in production)
+      - AUTO_REPLY_SCHEDULER_ENABLED=1
+      - AUTO_REPLY_INTERVAL_SECONDS=5
+      - IG_POLL_INTERVAL_SECONDS=0.25
+      - IG_POLL_MAX_ATTEMPTS=60
+      - IG_PUBLISH_RETRY_SLEEP=0.5
+      - AUTO_IMAGE_AUTOPUBLISH_ENABLED=1
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*", "--timeout-keep-alive", "65"]
     expose:
       - "8000"

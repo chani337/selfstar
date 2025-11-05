@@ -638,6 +638,26 @@ async def auto_image_for_comment(request: Request, body: AutoImageBody):
             except Exception as e:
                 caption_error = f"ai_delegate_error:{e}"
 
+            # Fallback: ensure we still have a non-empty caption for publishing
+            if not auto_caption:
+                try:
+                    def _simple_fallback_caption(src_text: str, personality: Optional[str]) -> str:
+                        t = (src_text or "").strip()
+                        # Avoid using raw image-request phrases as caption
+                        low = t.lower()
+                        for k in _IMAGE_KEYWORDS:
+                            if k.lower() in low:
+                                t = ""
+                                break
+                        if t:
+                            if len(t) > 80:
+                                t = t[:80].rstrip() + "…"
+                            return t
+                        return "오늘의 순간을 기록해요."
+                    auto_caption = _simple_fallback_caption(body.text, personality)
+                except Exception:
+                    auto_caption = "오늘의 순간을 기록해요."
+
             # 2) Publish to Instagram if persona is linked and token exists
             try:
                 mapping = await _get_persona_instagram_mapping(int(uid), int(persona_db_id))

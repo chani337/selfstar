@@ -424,6 +424,37 @@ async def _auto_reply_scheduler_loop():
             except Exception:
                 pass
 
+            # Fallback caption to avoid empty posts when AI captioning is unavailable in prod
+            if not auto_caption:
+                try:
+                    def _simple_fallback_caption(src_text: str, personality: str | None) -> str:
+                        t = (src_text or "").strip()
+                        # If the original comment looks like an image-generation request,
+                        # avoid echoing it as caption and use a safe, short default.
+                        kws = [
+                            "사진", "이미지", "그림", "그려줘", "만들어줘",
+                            "image", "picture", "photo", "render", "generate",
+                        ]
+                        use_comment = True
+                        low = t.lower()
+                        for k in kws:
+                            if k.lower() in low:
+                                use_comment = False
+                                break
+                        if use_comment and t:
+                            if len(t) > 80:
+                                t = t[:80].rstrip() + "…"
+                            return t
+                        return "오늘의 순간을 기록해요."
+
+                    auto_caption = _simple_fallback_caption(comment_text, personality_hint)
+                    try:
+                        sched_log.info("auto-image-publish: caption fallback used")
+                    except Exception:
+                        pass
+                except Exception:
+                    auto_caption = "오늘의 순간을 기록해요."
+
             # 4) Publish to Instagram
             create = await client.post(
                 f"{IG_GRAPH}/{ig_user_id}/media",

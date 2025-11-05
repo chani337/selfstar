@@ -3,3 +3,11 @@ PORT=8600
 # Add model/runtime configs as needed
 # MODEL_ID=
 # HF_TOKEN=
+
+# Caption generation (Gemini) requires a Google API key in production
+GOOGLE_API_KEY=
+# Optional: override model and tuning (defaults align with notebook)
+GEMINI_TEXT_MODEL=gemini-2.5-flash
+# CAPTION_TEMPERATURE=0.9
+# CAPTION_TOP_P=0.95
+# CAPTION_MAX_TOKENS=
