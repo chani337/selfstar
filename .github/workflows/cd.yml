@@ -143,8 +143,8 @@ jobs:
           source: "./*,backend/.env.production,frontend/.env.production,ai/.env.production"
           debug: true
 
-      # --- 배포: 업로드본 → 실제 APP_DIR 병합(env/ 보존) + compose 검증 + 재시작 ---
-      - name: Deploy on server (merge + systemd restart)
+      # --- 배포: 업로드본 → 실제 APP_DIR 병합(env/ 보존) + compose 검증 + 재기동(직접 compose) ---
+      - name: Deploy on server (merge + compose up)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ env.SERVER_HOST }}
@@ -194,30 +194,24 @@ jobs:
             for f in docker-compose.prod.yml docker-compose.prod.yaml docker-compose.yml docker-compose.yaml; do
               if [ -f "$f" ]; then COMPOSE_FILE="$f"; break; fi
             done
-            if [ -n "$COMPOSE_FILE" ]; then
-              echo "[DEPLOY] compose config check with -f $COMPOSE_FILE"
-              $DC -f "$COMPOSE_FILE" config >/dev/null
-            else
-              echo "[WARN] no compose file found (systemd 내부 처리 가정)"
+            if [ -z "$COMPOSE_FILE" ]; then
+              echo "[ERR] no compose file found (expected docker-compose.prod.yml)"; exit 1
             fi
+            echo "[DEPLOY] compose config check with -f $COMPOSE_FILE"
+            $DC -f "$COMPOSE_FILE" config >/dev/null
 
-            # systemd 재시작
-            echo "[DEPLOY] systemd restart selfstar.service"
-            ${SUDO:-} systemctl daemon-reload || true
-            ${SUDO:-} systemctl restart selfstar.service || {
-              echo "[ERR] restart failed"
-              ${SUDO:-} systemctl status selfstar.service -n 200 --no-pager || true
-              ${SUDO:-} journalctl -u selfstar.service -n 400 --no-pager || true
-              $DOCKER ps -a || true
+            # 직접 compose 재배포 (systemd 우회하여 에러 표면화)
+            echo "[DEPLOY] compose up -d --build"
+            $DC -f "$COMPOSE_FILE" pull --quiet || true
+            if ! $DC -f "$COMPOSE_FILE" up -d --build; then
+              echo "[ERR] compose up failed"
+              $DC -f "$COMPOSE_FILE" ps || true
+              $DC -f "$COMPOSE_FILE" logs --no-log-prefix --tail=200 || true
               exit 1
-            }
-            ${SUDO:-} systemctl is-active --quiet selfstar.service || {
-              echo "[ERR] not active"
-              ${SUDO:-} systemctl status selfstar.service -n 200 --no-pager || true
-              ${SUDO:-} journalctl -u selfstar.service -n 400 --no-pager || true
-              $DOCKER ps -a || true
-              exit 1
-            }
+            fi
+            $DC -f "$COMPOSE_FILE" ps
+            # 최근 백엔드 로그 출력 (트러블슈팅용)
+            $DC -f "$COMPOSE_FILE" logs --no-log-prefix --since=2m backend || true
 
             echo "[DEPLOY] prune images"
             $DOCKER image prune -f || true
