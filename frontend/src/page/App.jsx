@@ -35,6 +35,9 @@ import heroImg from "../../img/hero.png";
 import step2Img from "../../img/step2.png";
 // import step3Img from "../../img/step3.png"; // replaced by Step3Carousel
 import Step3Carousel from "@/components/Step3Carousel.jsx";
+import step4Img from "../../img/step4.png";
+import step5Img from "../../img/step5.png";
+import step6Img from "../../img/step6.png";
 
 // Backend API base comes from .env (VITE_API_BASE); empty string in dev uses Vite proxy
 
@@ -918,21 +921,30 @@ function LandingSections() {
 
         <div className="grid md:grid-cols-3 gap-6">
           <Reveal from="up">
-            <div className="card h-48 md:h-56 p-4">
-              <b className="text-blue-500">04</b>
-              <div className="text-slate-500 mt-2">{t('common.comingSoon')}</div>
+            <div className="card p-6">
+              <div className="text-3xl font-black text-blue-500 mb-3">04</div>
+              <div className="aspect-[4/3] w-full mb-4 overflow-hidden rounded-xl">
+                <img src={step4Img} alt="step4" className="w-full h-full object-cover" />
+              </div>
+              <div className="text-center text-slate-700 font-semibold text-lg">{t('home.landing.s4.title')}</div>
             </div>
           </Reveal>
           <Reveal from="up" delay={80}>
-            <div className="card h-48 md:h-56 p-4 mt-10">
-              <b className="text-blue-500">05</b>
-              <div className="text-slate-500 mt-2">{t('common.comingSoon')}</div>
+            <div className="card p-6">
+              <div className="text-3xl font-black text-blue-500 mb-3">05</div>
+              <div className="aspect-[4/3] w-full mb-4 overflow-hidden rounded-xl">
+                <img src={step5Img} alt="step5" className="w-full h-full object-cover" />
+              </div>
+              <div className="text-center text-slate-700 font-semibold text-lg">{t('home.landing.s5.title')}</div>
             </div>
           </Reveal>
           <Reveal from="up" delay={160}>
-            <div className="card h-48 md:h-56 p-4 mt-20">
-              <b className="text-blue-500">06</b>
-              <div className="text-slate-500 mt-2">{t('common.comingSoon')}</div>
+            <div className="card p-6">
+              <div className="text-3xl font-black text-blue-500 mb-3">06</div>
+              <div className="aspect-[4/3] w-full mb-4 overflow-hidden rounded-xl">
+                <img src={step6Img} alt="step6" className="w-full h-full object-cover" />
+              </div>
+              <div className="text-center text-slate-700 font-semibold text-lg">{t('home.landing.s6.title')}</div>
             </div>
           </Reveal>
         </div>

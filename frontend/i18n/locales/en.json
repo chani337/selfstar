@@ -113,7 +113,10 @@
       "step": "Step {n}",
       "s1": { "title": "Start with prompts and styles", "desc": "Choose prompts and styles to get started." },
       "s2": { "title": "Analyze and refine", "desc": "Iterate with templates and guidance." },
-      "s3": { "title": "Schedule and automate", "desc": "Auto-publish to Instagram & Threads." }
+      "s3": { "title": "Schedule and automate", "desc": "Auto-publish to Instagram & Threads." },
+      "s4": { "title": "Start Instagram Activities" },
+      "s5": { "title": "Instagram Posts" },
+      "s6": { "title": "Activity Dashboard" }
     }
   },
   "footer": {

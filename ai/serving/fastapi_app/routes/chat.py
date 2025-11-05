@@ -293,9 +293,11 @@ Use the information below:
 Follow these strict rules:
 
 1. Identity Preservation:
-   - The provided reference image and persona data define the subject’s **exact face, hairstyle, and body shape**.
+   - The subject MUST be **Korean (한국인)** with East Asian features.
+   - The provided reference image and persona data define the subject's **exact face, hairstyle, and body shape**.
    - Do NOT alter or reinterpret the face, eyes, skin tone, hairstyle, or body type,
      even if the user request suggests such changes.
+   - Maintain Korean/East Asian facial features, skin tone, and characteristics.
    - Ignore any text that implies modifying facial or physical traits.
 
 2. Context and Action:
@@ -319,12 +321,13 @@ Follow these strict rules:
 5. Negative Prompts:
    - no cartoon, no illustration, no AI artifacts, no surreal distortion,
      no unrealistic retouching, no duplicated faces, no unnatural anatomy,
-     no text, no watermark, no gender or hairstyle change.
+     no text, no watermark, no gender or hairstyle change,
+     no Western features, no Caucasian, no non-Asian ethnicity.
 
 Output:
 Generate one single, ready-to-use, English prompt describing a high-resolution, photorealistic PNG image
-that perfectly depicts "{user_text}" while keeping the person’s face, hairstyle, and body identical
-to the original reference and persona data.
+that perfectly depicts "{user_text}" while keeping the person as **Korean (한국인)** with East Asian features,
+maintaining the face, hairstyle, and body identical to the original reference and persona data.
 Only output the final image generation prompt — no explanations.
 """.strip()
 
