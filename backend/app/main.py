@@ -234,6 +234,77 @@ async def _auto_reply_scheduler_loop():
         sched_log.info("Auto-reply scheduler disabled by env. Not starting loop.")
         return
 
+    async def _maybe_generate_image_for_comment(client: httpx.AsyncClient, ai_url: str, text: str, persona_img_norm: str | None, uid: int, persona_num: int, persona_params_json: str | None):
+        """Best-effort image generation and storage for image-like requests.
+        Swallows all exceptions to avoid impacting reply flow.
+        """
+        try:
+            auto_img_enabled = (os.getenv("AUTO_IMAGE_COMMENTS", "1").strip().lower() in ("1", "true", "yes"))
+            if not auto_img_enabled:
+                return
+            if not persona_img_norm:
+                return
+            if not _looks_like_image_request(text or ""):
+                return
+            ai_payload = {
+                "user_text": text,
+                "persona_img": persona_img_norm,
+                "persona": persona_params_json or "",
+            }
+            r = await client.post(f"{ai_url}/chat/image", json=ai_payload)
+            if r.status_code != 200:
+                return
+            aj = r.json() or {}
+            img_data_uri = aj.get("image")
+            if not (isinstance(img_data_uri, str) and img_data_uri.startswith("data:")):
+                return
+            try:
+                from app.core.s3 import s3_enabled, put_data_uri
+                if not s3_enabled():
+                    return
+                key = put_data_uri(
+                    img_data_uri,
+                    model=None,
+                    key_prefix=f"drafts/{uid}/{persona_num}",
+                    base_prefix="",
+                    include_model=False,
+                    include_date=False,
+                )
+                # Store record (best-effort)
+                try:
+                    pool2 = await get_mysql_pool()
+                    async with pool2.acquire() as conn2:
+                        async with conn2.cursor() as cur2:
+                            try:
+                                await cur2.execute(
+                                    """
+                                    INSERT INTO ss_chat_img (user_id, persona_id, img_key)
+                                    VALUES (%s, %s, %s)
+                                    """,
+                                    (int(uid), int(persona_num), key),
+                                )
+                            except Exception:
+                                try:
+                                    await cur2.execute(
+                                        """
+                                        INSERT INTO ss_chat_img (user_id, persona_id, persona_chat_img)
+                                        VALUES (%s, %s, %s)
+                                        """,
+                                        (int(uid), int(persona_num), key),
+                                    )
+                                except Exception:
+                                    pass
+                            try:
+                                await conn2.commit()
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+            except Exception:
+                pass
+        except Exception:
+            pass
+
     while True:
         try:
             pool = await get_mysql_pool()
@@ -432,76 +503,16 @@ async def _auto_reply_scheduler_loop():
                         posted_count = 0
                         for task in comment_tasks:
                             try:
-                                # 0) If the comment looks like an image request, generate image as a best-effort side effect
-                                try:
-                                    auto_img_enabled = (os.getenv("AUTO_IMAGE_COMMENTS", "1").strip().lower() in ("1", "true", "yes"))
-                                    if auto_img_enabled and _looks_like_image_request(task.get("text", "")):
-                                        # Need persona image to drive style; skip if missing
-                                        if persona_img_norm:
-                                            # Prepare payload similar to routes.instagram_reply.auto_image_for_comment
-                                            ai_payload = {
-                                                "user_text": task.get("text"),
-                                                "persona_img": persona_img_norm,
-                                                "persona": persona_params_json or "",
-                                            }
-                                            try:
-                                                r = await client.post(f"{ai_url}/chat/image", json=ai_payload)
-                                                if r.status_code == 200:
-                                                    aj = r.json() or {}
-                                                    img_data_uri = aj.get("image")
-                                                    if isinstance(img_data_uri, str) and img_data_uri.startswith("data:"):
-                                                        try:
-                                                            from app.core.s3 import s3_enabled, presign_get_url, put_data_uri
-                                                            if s3_enabled():
-                                                                key = put_data_uri(
-                                                                    img_data_uri,
-                                                                    model=None,
-                                                                    key_prefix=f"drafts/{uid}/{persona_num}",
-                                                                    base_prefix="",
-                                                                    include_model=False,
-                                                                    include_date=False,
-                                                                )
-                                                                # Store record (best-effort)
-                                                                try:
-                                                                    pool2 = await get_mysql_pool()
-                                                                    async with pool2.acquire() as conn2:
-                                                                        async with conn2.cursor() as cur2:
-                                                                            try:
-                                                                                await cur2.execute(
-                                                                                    """
-                                                                                    INSERT INTO ss_chat_img (user_id, persona_id, img_key)
-                                                                                    VALUES (%s, %s, %s)
-                                                                                    """,
-                                                                                    (int(uid), int(persona_num), key),
-                                                                                )
-                                                                                try:
-                                                                                    await conn2.commit()
-                                                                                except Exception:
-                                                                                    pass
-                                                                            except Exception:
-                                                                                # Fallback column name
-                                                                                try:
-                                                                                    await cur2.execute(
-                                                                                        """
-                                                                                        INSERT INTO ss_chat_img (user_id, persona_id, persona_chat_img)
-                                                                                        VALUES (%s, %s, %s)
-                                                                                        """,
-                                                                                        (int(uid), int(persona_num), key),
-                                                                                    )
-                                                                                    try:
-                                                                                        await conn2.commit()
-                                                                                    except Exception:
-                                                                                        pass
-                                                                                except Exception:
-                                                                                    pass
-                                                            # If no S3, skip storing
-                                                        except Exception:
-                                                            pass
-                                            except Exception:
-                                                # Ignore AI errors for image path and continue with reply
-                                                pass
-                                except Exception:
-                                    pass
+                                # 0) Best-effort image generation for image-like request
+                                await _maybe_generate_image_for_comment(
+                                    client,
+                                    ai_url,
+                                    task.get("text", ""),
+                                    persona_img_norm,
+                                    uid,
+                                    persona_num,
+                                    persona_params_json,
+                                )
 
                                 # 1) AI generate reply
                                 payload = {
