@@ -305,6 +305,210 @@ async def _auto_reply_scheduler_loop():
         except Exception:
             pass
 
+    def _extract_mbti_from_params(pp_raw: str | dict | None) -> str:
+        try:
+            import json as _json
+            if isinstance(pp_raw, str):
+                try:
+                    pp = _json.loads(pp_raw)
+                except Exception:
+                    pp = {}
+            else:
+                pp = pp_raw or {}
+            if not isinstance(pp, dict):
+                return ""
+            for key in ("mbti", "MBTI", "mbti_type", "personality_mbti"):
+                val = pp.get(key)
+                if isinstance(val, str) and val.strip():
+                    return val.strip()
+            import re as _re
+            for key in ("personality", "tone", "style", "voice"):
+                val = pp.get(key)
+                if isinstance(val, str) and val.strip():
+                    s = val.strip().upper()
+                    if _re.match(r"^[E|I][N|S][F|T][P|J]$", s):
+                        return s
+            igp = (pp.get("instagram") or {}) if isinstance(pp, dict) else {}
+            val = igp.get("personality") or igp.get("tone")
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+        except Exception:
+            pass
+        return ""
+
+    async def _auto_image_publish_for_comment(
+        client: httpx.AsyncClient,
+        ai_url: str,
+        uid: int,
+        persona_num: int,
+        ig_user_id: str,
+        access_token: str,
+        comment_id: str,
+        comment_text: str,
+        persona_img_norm: str | None,
+        persona_params_json: str | None,
+        sched_log: logging.Logger,
+    ) -> bool:
+        """Generate an image and auto-publish to Instagram for Business personas.
+        Returns True on successful publish (and ACK), False otherwise.
+        """
+        try:
+            # Require S3 for public URL
+            from app.core.s3 import s3_enabled, put_data_uri, presign_get_url
+            if not s3_enabled() or not persona_img_norm:
+                return False
+            # 1) Generate image via AI
+            payload = {
+                "user_text": comment_text,
+                "persona_img": persona_img_norm,
+                "persona": persona_params_json or "",
+            }
+            r = await client.post(f"{ai_url}/chat/image", json=payload)
+            if r.status_code != 200:
+                return False
+            aj = r.json() or {}
+            img_data_uri = aj.get("image")
+            if not (isinstance(img_data_uri, str) and img_data_uri.startswith("data:")):
+                return False
+            # 2) Upload to S3
+            key = put_data_uri(
+                img_data_uri,
+                model=None,
+                key_prefix=f"drafts/{int(uid)}/{int(persona_num)}",
+                base_prefix="",
+                include_model=False,
+                include_date=False,
+            )
+            url = presign_get_url(key)
+
+            # Store record (best-effort)
+            try:
+                pool2 = await get_mysql_pool()
+                async with pool2.acquire() as conn2:
+                    async with conn2.cursor() as cur2:
+                        try:
+                            await cur2.execute(
+                                """
+                                INSERT INTO ss_chat_img (user_id, persona_id, img_key)
+                                VALUES (%s, %s, %s)
+                                """,
+                                (int(uid), int(persona_num), key),
+                            )
+                        except Exception:
+                            try:
+                                await cur2.execute(
+                                    """
+                                    INSERT INTO ss_chat_img (user_id, persona_id, persona_chat_img)
+                                    VALUES (%s, %s, %s)
+                                    """,
+                                    (int(uid), int(persona_num), key),
+                                )
+                            except Exception:
+                                pass
+                        try:
+                            await conn2.commit()
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            # 3) Generate caption (optional)
+            personality_hint = _extract_mbti_from_params(persona_params_json)
+            auto_caption: str | None = None
+            try:
+                cr = await client.post(f"{ai_url}/caption/generate", json={"image": url, "personality": personality_hint or "", "tone": None})
+                if cr.status_code == 200:
+                    cj = cr.json() or {}
+                    cap = (cj.get("caption") or "").strip()
+                    auto_caption = cap or None
+            except Exception:
+                pass
+
+            # 4) Publish to Instagram
+            create = await client.post(
+                f"{IG_GRAPH}/{ig_user_id}/media",
+                data={
+                    "image_url": url,
+                    "caption": auto_caption or "",
+                    "access_token": access_token,
+                },
+            )
+            if create.status_code != 200:
+                return False
+            creation_id = (create.json() or {}).get("id")
+            if not creation_id:
+                return False
+
+            # Wait for readiness
+            try:
+                poll_interval = float(os.getenv("IG_POLL_INTERVAL_SECONDS", "1.0") or 1.0)
+                poll_attempts = int(os.getenv("IG_POLL_MAX_ATTEMPTS", "20") or 20)
+                for _ in range(poll_attempts):
+                    gr = await client.get(
+                        f"{IG_GRAPH}/{creation_id}",
+                        params={"access_token": access_token, "fields": "status_code"},
+                    )
+                    if gr.status_code == 200:
+                        st = (gr.json() or {}).get("status_code")
+                        if st == "FINISHED":
+                            break
+                        if st == "ERROR":
+                            break
+                    await asyncio.sleep(poll_interval)
+            except Exception:
+                pass
+
+            async def _do_publish():
+                return await client.post(
+                    f"{IG_GRAPH}/{ig_user_id}/media_publish",
+                    data={"creation_id": creation_id, "access_token": access_token},
+                )
+
+            pub = await _do_publish()
+            if pub.status_code != 200:
+                try:
+                    j = pub.json() or {}
+                    err = (j.get("error") or {})
+                    if err.get("code") == 9007 or err.get("error_subcode") == 2207027:
+                        retry_sleep = float(os.getenv("IG_PUBLISH_RETRY_SLEEP", "2.0") or 2.0)
+                        await asyncio.sleep(retry_sleep)
+                        pub2 = await _do_publish()
+                        if pub2.status_code != 200:
+                            return False
+                except Exception:
+                    return False
+
+            # 5) ACK original comment id
+            try:
+                pool = await get_mysql_pool()
+                async with pool.acquire() as conn:
+                    async with conn.cursor() as cur:
+                        try:
+                            await cur.execute(
+                                """
+                                INSERT INTO ss_instagram_event_seen (external_id, user_id, user_persona_num)
+                                VALUES (%s,%s,%s)
+                                ON DUPLICATE KEY UPDATE updated_at=CURRENT_TIMESTAMP
+                                """,
+                                (str(comment_id), int(uid), int(persona_num)),
+                            )
+                            try:
+                                await conn.commit()
+                            except Exception:
+                                pass
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            try:
+                sched_log.info(f"auto-image-publish: ok uid={uid} num={persona_num}")
+            except Exception:
+                pass
+            return True
+        except Exception:
+            return False
+
     while True:
         try:
             pool = await get_mysql_pool()
@@ -503,16 +707,24 @@ async def _auto_reply_scheduler_loop():
                         posted_count = 0
                         for task in comment_tasks:
                             try:
-                                # 0) Best-effort image generation for image-like request
-                                await _maybe_generate_image_for_comment(
-                                    client,
-                                    ai_url,
-                                    task.get("text", ""),
-                                    persona_img_norm,
-                                    uid,
-                                    persona_num,
-                                    persona_params_json,
-                                )
+                                # 0) For image-like requests, auto-generate and publish a post (Business personas)
+                                if _looks_like_image_request(task.get("text", "")):
+                                    auto_publish_enabled = (os.getenv("AUTO_IMAGE_AUTOPUBLISH_ENABLED", "1").strip().lower() in ("1", "true", "yes"))
+                                    if auto_publish_enabled:
+                                        ok = await _auto_image_publish_for_comment(
+                                            client, ai_url, uid, persona_num, str(ig_user_id), str(token), task["comment_id"], task.get("text", ""), persona_img_norm, persona_params_json, sched_log
+                                        )
+                                        if ok:
+                                            # After successful publish and ACK, skip text reply
+                                            try:
+                                                posted_count += 1
+                                            except Exception:
+                                                pass
+                                            continue
+                                    # If auto-publish disabled or failed, at least try best-effort image generation (no post)
+                                    await _maybe_generate_image_for_comment(
+                                        client, ai_url, task.get("text", ""), persona_img_norm, uid, persona_num, persona_params_json
+                                    )
 
                                 # 1) AI generate reply
                                 payload = {
