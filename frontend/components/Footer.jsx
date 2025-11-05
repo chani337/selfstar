@@ -133,14 +133,7 @@ export default function Footer({ forceMobile = false }) {
               >앱</button>
             </div>
 
-            {/* 전체 모바일 미리보기 (iframe) */}
-            <Link
-              to="/preview/mobile"
-              className="ml-2 h-9 px-3 inline-flex items-center rounded-xl border border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100 text-sm font-semibold"
-              title="모바일 전체 미리보기"
-            >
-              모바일 전체 미리보기
-            </Link>
+            {/* 전체 모바일 미리보기 제거됨 */}
           </div>
 
           {/* 정책 링크 */}

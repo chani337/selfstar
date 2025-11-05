@@ -20,7 +20,7 @@ import DashboardPostInsights from "./DashboardPostInsights.jsx";
 import PostInsightDetail from "./PostInsightDetail.jsx";
 import ProfileSelect from "./ProfileSelect.jsx";
 import Credit from "./Credit.jsx";
-import MobilePreview from "./MobilePreview.jsx";
+// Removed MobilePreview page
 
 const base = "px-3 py-1.5 rounded-full transition";
 const active = "bg-blue-600 text-white shadow";
@@ -432,7 +432,14 @@ export default function App() {
               className={({ isActive }) => `${base} ${isActive ? active : idle}`}
               onClick={(e) => {
                 // If logged in, show the chat safety gate modal before navigating
-                if (user) { e.preventDefault(); setShowGate(true); }
+                if (user) {
+                  e.preventDefault();
+                  setShowGate(true);
+                } else {
+                  // Guest: navigate to /chat, and proactively ask App to open the profile selector
+                  // This complements Chat's own request and avoids timing issues on first mount/iframe mode
+                  setTimeout(() => { try { window.dispatchEvent(new CustomEvent("open-profile-select")); } catch {} }, 60);
+                }
               }}
             >
               {t('header.chat')}
@@ -493,7 +500,17 @@ export default function App() {
                   <NavLink to="/" end className={({ isActive }) => `${isActive ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'} rounded-lg px-3 py-2`}
                     onClick={() => setMobileNavOpen(false)}>{t('header.home')}</NavLink>
                   <NavLink to="/chat" className={({ isActive }) => `${isActive ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'} rounded-lg px-3 py-2`}
-                    onClick={(e) => { if (user) { e.preventDefault(); setMobileNavOpen(false); setShowGate(true); } else { setMobileNavOpen(false); } }}>{t('header.chat')}</NavLink>
+                      onClick={(e) => {
+                        if (user) {
+                          e.preventDefault();
+                          setMobileNavOpen(false);
+                          setShowGate(true);
+                        } else {
+                          // Let router navigate and also proactively request the profile selector
+                          setMobileNavOpen(false);
+                          setTimeout(() => { try { window.dispatchEvent(new CustomEvent('open-profile-select')); } catch {} }, 60);
+                        }
+                      }}>{t('header.chat')}</NavLink>
                   <NavLink to="/mypage" className={({ isActive }) => `${isActive ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'} rounded-lg px-3 py-2`}
                     onClick={() => setMobileNavOpen(false)}>{t('header.mypage')}</NavLink>
                   <NavLink to="/alerts" className={({ isActive }) => `${isActive ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'} rounded-lg px-3 py-2`}
@@ -533,7 +550,16 @@ export default function App() {
                 <NavLink to="/" end className={({ isActive }) => `${isActive ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'} rounded-lg px-3 py-2`}
                   onClick={() => setMobileNavOpen(false)}>{t('header.home')}</NavLink>
                 <NavLink to="/chat" className={({ isActive }) => `${isActive ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'} rounded-lg px-3 py-2`}
-                  onClick={(e) => { if (user) { e.preventDefault(); setMobileNavOpen(false); setShowGate(true); } else { setMobileNavOpen(false); } }}>{t('header.chat')}</NavLink>
+                  onClick={(e) => {
+                    if (user) {
+                      e.preventDefault();
+                      setMobileNavOpen(false);
+                      setShowGate(true);
+                    } else {
+                      setMobileNavOpen(false);
+                      setTimeout(() => { try { window.dispatchEvent(new CustomEvent('open-profile-select')); } catch {} }, 60);
+                    }
+                  }}>{t('header.chat')}</NavLink>
                 <NavLink to="/mypage" className={({ isActive }) => `${isActive ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'} rounded-lg px-3 py-2`}
                   onClick={() => setMobileNavOpen(false)}>{t('header.mypage')}</NavLink>
                 <NavLink to="/alerts" className={({ isActive }) => `${isActive ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'} rounded-lg px-3 py-2`}
@@ -583,7 +609,7 @@ export default function App() {
           />
           <Route path="/alerts" element={<Alerts />} />
           <Route path="/credits" element={<Credit />} />
-          <Route path="/preview/mobile" element={<MobilePreview />} />
+          {/* Removed route: /preview/mobile */}
         </Routes>
       </main>
 
@@ -599,6 +625,8 @@ export default function App() {
             setProfileSelectRefreshTick((v) => v + 1);
             setShowProfileModal(true);
             navigate("/chat");
+            // Also broadcast a request so Chat/App in iframe/mobile mode reliably open the selector
+            try { window.dispatchEvent(new CustomEvent('open-profile-select')); } catch {}
           }}
         />
       )}
